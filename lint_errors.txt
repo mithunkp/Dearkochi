@@ -1,0 +1,98 @@
+
+> dk_poject@0.1.0 lint
+> eslint
+
+
+/home/mithu/Documents/next/dk_poject/src/app/api/News/route.ts
+   83:15  warning  'i' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  257:14  warning  'err' is defined but never used         @typescript-eslint/no-unused-vars
+
+/home/mithu/Documents/next/dk_poject/src/app/chats/[id]/page.tsx
+   62:8   warning  React Hook useEffect has missing dependencies: 'fetchChat', 'fetchMessages', 'router', and 'subscribeToMessages'. Either include them or remove the dependency array                                                                                                                     react-hooks/exhaustive-deps
+  191:25  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/home/mithu/Documents/next/dk_poject/src/app/chats/page.tsx
+   46:8   warning  React Hook useEffect has missing dependencies: 'fetchChats' and 'router'. Either include them or remove the dependency array                                                                                                                                                             react-hooks/exhaustive-deps
+  116:65  error    `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`                                                                                                                                                                                                                          react/no-unescaped-entities
+  116:82  error    `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`                                                                                                                                                                                                                          react/no-unescaped-entities
+  140:41  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/home/mithu/Documents/next/dk_poject/src/app/classified/[id]/page.tsx
+   40:8   warning  React Hook useEffect has a missing dependency: 'fetchAd'. Either include it or remove the dependency array                                                                                                                                                                               react-hooks/exhaustive-deps
+  147:25  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/home/mithu/Documents/next/dk_poject/src/app/classified/my-ads/page.tsx
+   35:8   warning  React Hook useEffect has a missing dependency: 'fetchMyAds'. Either include it or remove the dependency array                                                                                                                                                                            react-hooks/exhaustive-deps
+  113:37  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/home/mithu/Documents/next/dk_poject/src/app/classified/new/page.tsx
+   69:23  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  183:33  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/home/mithu/Documents/next/dk_poject/src/app/classified/page.tsx
+  139:41  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+/home/mithu/Documents/next/dk_poject/src/app/page.tsx
+   28:26  warning  'id' is defined but never used                                   @typescript-eslint/no-unused-vars
+   28:30  warning  'title' is defined but never used                                @typescript-eslint/no-unused-vars
+   28:37  warning  'description' is defined but never used                          @typescript-eslint/no-unused-vars
+   28:88  warning  'icon' is defined but never used                                 @typescript-eslint/no-unused-vars
+   73:10  warning  'siteData' is assigned a value but never used                    @typescript-eslint/no-unused-vars
+   76:10  warning  'loadingNews' is assigned a value but never used                 @typescript-eslint/no-unused-vars
+  161:9   warning  'renderPackingCard' is assigned a value but never used           @typescript-eslint/no-unused-vars
+  430:31  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+/home/mithu/Documents/next/dk_poject/src/app/profile/page.tsx
+   24:12  warning  'profile' is assigned a value but never used                                                                                         @typescript-eslint/no-unused-vars
+   37:8   warning  React Hook useEffect has missing dependencies: 'fetchProfile' and 'fetchStores'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  168:76  error    `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`                                                                      react/no-unescaped-entities
+
+/home/mithu/Documents/next/dk_poject/src/app/stores/[id]/page.tsx
+   35:11  warning  'router' is assigned a value but never used                                                                                                                  @typescript-eslint/no-unused-vars
+   51:8   warning  React Hook useEffect has missing dependencies: 'fetchComments', 'fetchRatings', and 'fetchStoreDetails'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+   57:8   warning  React Hook useEffect has a missing dependency: 'fetchUserRating'. Either include it or remove the dependency array                                           react-hooks/exhaustive-deps
+  125:23  warning  'error' is assigned a value but never used                                                                                                                   @typescript-eslint/no-unused-vars
+
+/home/mithu/Documents/next/dk_poject/src/app/stores/new/page.tsx
+  66:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/home/mithu/Documents/next/dk_poject/src/app/stores/page.tsx
+  67:45  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  75:50  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  83:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/home/mithu/Documents/next/dk_poject/src/components/widgets/GenericWidget.tsx
+  1:57  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/home/mithu/Documents/next/dk_poject/src/components/widgets/JobWidget.tsx
+  1:53  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/home/mithu/Documents/next/dk_poject/src/components/widgets/RealEstateWidget.tsx
+  1:60  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/home/mithu/Documents/next/dk_poject/src/components/widgets/ServiceWidget.tsx
+  1:57  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/home/mithu/Documents/next/dk_poject/src/components/widgets/VehicleWidget.tsx
+  1:57  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/home/mithu/Documents/next/dk_poject/src/lib/auth-context.tsx
+  23:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/home/mithu/Documents/next/dk_poject/src/lib/auth-context.tsx:23:5
+  21 |
+  22 |   useEffect(() => {
+> 23 |     setMounted(true);
+     |     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  24 |     let cleanedUp = false;
+  25 |
+  26 |     const init = async () => {  react-hooks/set-state-in-effect
+
+✖ 40 problems (15 errors, 25 warnings)
+
