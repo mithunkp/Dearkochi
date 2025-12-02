@@ -27,7 +27,7 @@ export default function NewsSidebar({ onClose }: NewsSidebarProps) {
         setNews(newsData);
         setLastUpdated(new Date());
       } else {
-        console.error('Failed to fetch live news');
+        console.error('Failed to fetch live news ');
         setNews([]); // Empty array instead of static data
       }
     } catch (error) {
