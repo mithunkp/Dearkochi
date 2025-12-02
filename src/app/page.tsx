@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import NextImage from 'next/image';
 
 import NewsSidebar from './NewsSidebar';
 import AuthModal from './AuthModal';
@@ -365,9 +366,17 @@ export default function DearKochi() {
         <header className="bg-white/50 backdrop-blur-xl border-b border-white/40 sticky top-0 z-30">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-amber-400 via-orange-400 to-rose-400 rounded-2xl flex items-center justify-center text-white font-bold shadow-lg shadow-orange-200 text-lg">🏮</div>
+              <div className="w-10 h-10 bg-gradient-to-br from-amber-400 via-orange-400 to-rose-400 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-200 overflow-hidden relative">
+                <NextImage
+                  src="/icon.png"
+                  alt="DearKochi Logo"
+                  fill
+                  className="object-cover"
+                  sizes="40px"
+                />
+              </div>
               <div>
-                <h1 className="text-lg font-extrabold text-gray-900 leading-none tracking-tight">DearKochi</h1>
+                <h1 className="text-lg font-extrabold text-[#e81a1d] leading-none tracking-tight">DearKochi</h1>
                 <p className="text-[10px] font-semibold text-amber-600 mt-0.5 uppercase tracking-widest">Experience Hub</p>
               </div>
             </div>
@@ -394,17 +403,17 @@ export default function DearKochi() {
 
         {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
 
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {/* Hero Section */}
-          <div className="mb-16 text-center">
-            <h2 className="text-5xl md:text-6xl font-black text-gray-900 tracking-tight leading-tight mb-4">
+          <div className="mb-6 text-center">
+            <h2 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight leading-tight mb-1">
               Kochi welcomes you
             </h2>
-            <p className="text-xl md:text-2xl text-gray-600 font-light max-w-2xl mx-auto leading-relaxed">
+            <p className="text-lg md:text-xl text-gray-600 font-light max-w-2xl mx-auto leading-relaxed">
               where every lane has a story
             </p>
-            <div className="h-1 w-20 bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400 rounded-full mx-auto mt-6 shadow-lg"></div>
-            <p className="text-gray-500 font-medium mt-6 italic">Explore the city we love</p>
+            <div className="h-1 w-16 bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400 rounded-full mx-auto mt-3 shadow-lg"></div>
+            <p className="text-gray-500 font-medium mt-2 italic text-sm">Explore the city we love</p>
           </div>
 
           {/* Dynamic Grid Layout */}

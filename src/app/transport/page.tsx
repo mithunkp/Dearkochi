@@ -1,5 +1,8 @@
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { promises as fs } from 'fs';
+import path from 'path';
+import TransportModes from './TransportModes';
 
 // Types
 type TrafficAlert = {
@@ -18,6 +21,26 @@ type FuelPrice = {
     trend: 'up' | 'stable' | 'down';
 };
 
+type MetroStation = {
+    station: string;
+    firstTrainAluva: string;
+    firstTrainPettah: string;
+    lastTrainAluva: string;
+    lastTrainPettah: string;
+    peakFrequency: string;
+    offPeakFrequency: string;
+};
+
+type WaterMetroSchedule = {
+    route: string;
+    from: string;
+    to: string;
+    firstTrip: string;
+    lastTrip: string;
+    frequency: string;
+    fare: string;
+};
+
 async function getTransportData() {
     const results = await Promise.all([
         supabase.from('traffic_alerts').select('*').order('created_at', { ascending: false }),
@@ -32,8 +55,74 @@ async function getTransportData() {
     };
 }
 
+async function getMetroTimetable(): Promise<{ data: MetroStation[], error: string | null }> {
+    try {
+        const filePath = path.join(process.cwd(), 'public', 'kochi_metro_timetable_backup.csv');
+        const fileContent = await fs.readFile(filePath, 'utf-8');
+        const lines = fileContent.trim().split('\n');
+
+        // Skip header and parse CSV
+        const stations: MetroStation[] = [];
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            const values = line.split(',');
+            if (values.length >= 7) {
+                stations.push({
+                    station: values[0],
+                    firstTrainAluva: values[1],
+                    firstTrainPettah: values[2],
+                    lastTrainAluva: values[3],
+                    lastTrainPettah: values[4],
+                    peakFrequency: values[5],
+                    offPeakFrequency: values[6]
+                });
+            }
+        }
+        return { data: stations, error: null };
+    } catch (error) {
+        console.error('Error reading metro timetable:', error);
+        return { data: [], error: 'Failed to load Metro timetable. Please try again later.' };
+    }
+}
+
+async function getWaterMetroSchedule(): Promise<{ data: WaterMetroSchedule[], error: string | null }> {
+    try {
+        const filePath = path.join(process.cwd(), 'public', 'kochi_water_metro_schedule.csv');
+        const fileContent = await fs.readFile(filePath, 'utf-8');
+        const lines = fileContent.trim().split('\n');
+
+        // Skip header and parse CSV
+        const schedules: WaterMetroSchedule[] = [];
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            const values = line.split(',');
+            if (values.length >= 7) {
+                schedules.push({
+                    route: values[0],
+                    from: values[1],
+                    to: values[2],
+                    firstTrip: values[3],
+                    lastTrip: values[4],
+                    frequency: values[5],
+                    fare: values[6]
+                });
+            }
+        }
+        return { data: schedules, error: null };
+    } catch (error) {
+        console.error('Error reading water metro schedule:', error);
+        return { data: [], error: 'Failed to load Water Metro schedule. Please try again later.' };
+    }
+}
+
 export default async function TransportPage() {
     const { trafficAlerts, fuelPrices } = await getTransportData();
+    const { data: metroStations, error: metroError } = await getMetroTimetable();
+    const { data: waterMetroSchedules, error: waterMetroError } = await getWaterMetroSchedule();
 
     // Fallback if DB is empty (Optional: remove this if you want it to be strictly DB driven)
     const displayTraffic = trafficAlerts.length > 0 ? trafficAlerts : [
@@ -46,15 +135,8 @@ export default async function TransportPage() {
         { id: 3, type: 'CNG', price: '₹85.00', trend: 'stable' }
     ] as FuelPrice[];
 
-    const transportModes = [
-        { name: 'Kochi Metro', desc: 'Fast connectivity', status: 'Operational', icon: '🚇', color: 'blue' },
-        { name: 'Water Metro', desc: 'Scenic island routes', status: 'On Time', icon: '⛴️', color: 'teal' },
-        { name: 'KSRTC Buses', desc: 'City-wide network', status: 'Delayed', icon: '🚌', color: 'red' },
-        { name: 'Uber / Auto', desc: 'Last-mile travel', status: 'Available', icon: '🚕', color: 'yellow' },
-    ];
-
     return (
-        <div className="min-h-screen bg-[#F3F4F6] font-sans pb-20">
+        <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
             {/* Header */}
             <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-30">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -77,33 +159,13 @@ export default async function TransportPage() {
                     {/* Left Column: Transport Modes & Fuel */}
                     <div className="lg:col-span-2 space-y-8">
 
-                        {/* Transport Modes Grid */}
-                        <section>
-                            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                <span>🚍</span> Public Transport
-                            </h2>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {transportModes.map((mode, i) => (
-                                    <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between group hover:shadow-md transition-all">
-                                        <div className="flex items-center gap-4">
-                                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl bg-${mode.color}-50 text-${mode.color}-600`}>
-                                                {mode.icon}
-                                            </div>
-                                            <div>
-                                                <h3 className="font-bold text-gray-900">{mode.name}</h3>
-                                                <p className="text-xs text-gray-500">{mode.desc}</p>
-                                            </div>
-                                        </div>
-                                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${mode.status === 'Operational' || mode.status === 'On Time' || mode.status === 'Available'
-                                                ? 'bg-green-50 text-green-600'
-                                                : 'bg-red-50 text-red-600'
-                                            }`}>
-                                            {mode.status}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </section>
+                        {/* Transport Modes with Metro Timetable */}
+                        <TransportModes
+                            metroStations={metroStations}
+                            waterMetroSchedules={waterMetroSchedules}
+                            metroError={metroError}
+                            waterMetroError={waterMetroError}
+                        />
 
                         {/* Fuel Prices */}
                         <section>

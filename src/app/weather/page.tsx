@@ -65,9 +65,13 @@ export default async function WeatherPage() {
                                     <div className="text-2xl font-bold text-blue-900 mt-1">{daily.uvIndexMax[0]}</div>
                                 </div>
                                 <div className="bg-blue-50 p-4 rounded-2xl text-center">
-                                    <div className="text-blue-400 text-sm font-bold uppercase">Sunset</div>
-                                    <div className="text-2xl font-bold text-blue-900 mt-1">
-                                        {new Date(daily.sunset[0]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    <div className="text-blue-400 text-sm font-bold uppercase">AQI</div>
+                                    <div className={`text-2xl font-bold mt-1 ${current.aqi <= 50 ? 'text-green-600' :
+                                            current.aqi <= 100 ? 'text-yellow-600' :
+                                                current.aqi <= 150 ? 'text-orange-600' :
+                                                    'text-red-600'
+                                        }`}>
+                                        {current.aqi}
                                     </div>
                                 </div>
                             </div>

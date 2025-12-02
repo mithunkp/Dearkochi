@@ -1,0 +1,9 @@
+Route,From,To,First_Trip,Last_Trip,Frequency_Minutes,Fare_INR
+Vyttila-Kakkanad,Vyttila,Kakkanad,07:00,20:50,20,20
+Vyttila-Kakkanad,Kakkanad,Vyttila,07:20,21:10,20,20
+High Court-Vypin,High Court,Vypin,07:00,20:30,15,20
+High Court-Vypin,Vypin,High Court,07:10,20:40,15,20
+Fort Kochi-Bolgatty,Fort Kochi,Bolgatty,08:00,20:00,30,30
+Fort Kochi-Bolgatty,Bolgatty,Fort Kochi,08:30,20:30,30,30
+Vyttila-Willingdon Island,Vyttila,Willingdon Island,07:15,19:45,30,25
+Vyttila-Willingdon Island,Willingdon Island,Vyttila,07:45,20:15,30,25

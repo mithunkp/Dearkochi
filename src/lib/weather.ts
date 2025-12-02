@@ -6,6 +6,7 @@ export interface WeatherData {
         windSpeed: number;
         humidity: number;
         time: string;
+        aqi: number; // Added AQI
     };
     daily: {
         time: string[];
@@ -25,37 +26,45 @@ export interface WeatherData {
 
 export async function getWeather(): Promise<WeatherData | null> {
     try {
-        const res = await fetch(
-            'https://api.open-meteo.com/v1/forecast?latitude=9.9312&longitude=76.2673&current=temperature_2m,relative_humidity_2m,is_day,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max&timezone=auto',
-            { next: { revalidate: 3600 } } // Cache for 1 hour
-        );
+        const [weatherRes, aqiRes] = await Promise.all([
+            fetch(
+                'https://api.open-meteo.com/v1/forecast?latitude=9.9312&longitude=76.2673&current=temperature_2m,relative_humidity_2m,is_day,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max&timezone=auto',
+                { next: { revalidate: 3600 } }
+            ),
+            fetch(
+                'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=9.9312&longitude=76.2673&current=us_aqi',
+                { next: { revalidate: 3600 } }
+            )
+        ]);
 
-        if (!res.ok) throw new Error('Failed to fetch weather data');
+        if (!weatherRes.ok || !aqiRes.ok) throw new Error('Failed to fetch weather or AQI data');
 
-        const data = await res.json();
+        const weatherData = await weatherRes.json();
+        const aqiData = await aqiRes.json();
 
         return {
             current: {
-                temperature: data.current.temperature_2m,
-                weatherCode: data.current.weather_code,
-                isDay: !!data.current.is_day,
-                windSpeed: data.current.wind_speed_10m,
-                humidity: data.current.relative_humidity_2m,
-                time: data.current.time,
+                temperature: weatherData.current.temperature_2m,
+                weatherCode: weatherData.current.weather_code,
+                isDay: !!weatherData.current.is_day,
+                windSpeed: weatherData.current.wind_speed_10m,
+                humidity: weatherData.current.relative_humidity_2m,
+                time: weatherData.current.time,
+                aqi: aqiData.current.us_aqi,
             },
             daily: {
-                time: data.daily.time,
-                weatherCode: data.daily.weather_code,
-                temperatureMax: data.daily.temperature_2m_max,
-                temperatureMin: data.daily.temperature_2m_min,
-                sunrise: data.daily.sunrise,
-                sunset: data.daily.sunset,
-                uvIndexMax: data.daily.uv_index_max,
+                time: weatherData.daily.time,
+                weatherCode: weatherData.daily.weather_code,
+                temperatureMax: weatherData.daily.temperature_2m_max,
+                temperatureMin: weatherData.daily.temperature_2m_min,
+                sunrise: weatherData.daily.sunrise,
+                sunset: weatherData.daily.sunset,
+                uvIndexMax: weatherData.daily.uv_index_max,
             },
             hourly: {
-                time: data.hourly.time,
-                temperature: data.hourly.temperature_2m,
-                weatherCode: data.hourly.weather_code,
+                time: weatherData.hourly.time,
+                temperature: weatherData.hourly.temperature_2m,
+                weatherCode: weatherData.hourly.weather_code,
             }
         };
     } catch (error) {
