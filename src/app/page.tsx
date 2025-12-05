@@ -166,13 +166,21 @@ export default function DearKochi() {
         <p className="text-teal-600 font-bold tracking-tight text-sm">Essentials</p>
       </div>
       <div className="flex flex-wrap gap-2 mt-4">
-        {['👟 Shoes', '👕 Cotton', '🧴 SPF', '☂️ Umbrella'].map((item, i) => (
-          <span key={i} className="bg-white/60 text-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm backdrop-blur-sm">
-            {item}
+        {[
+          { label: 'Shoes', icon: '/pack-shoes.svg' },
+          { label: 'Cotton', icon: '/pack-tshirt.svg' },
+          { label: 'SPF', icon: '/pack-sunscreen.svg' },
+          { label: 'Umbrella', icon: '/pack-umbrella.svg' }
+        ].map((item, i) => (
+          <span key={i} className="bg-white/60 text-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm backdrop-blur-sm flex items-center gap-1">
+            <div className="relative w-4 h-4">
+              <NextImage src={item.icon} alt={item.label} fill className="object-contain" />
+            </div>
+            {item.label}
           </span>
         ))}
       </div>
-    </div>
+    </div >
   );
 
   const renderPlacesCard = () => (
@@ -183,9 +191,11 @@ export default function DearKochi() {
       </div>
       <div className="flex items-center gap-3 mt-auto pt-4">
         <div className="flex -space-x-3">
-          {['🛞', '⛵', '🕌'].map((icon, i) => (
-            <div key={i} className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-100 to-amber-100 border-2 border-white flex items-center justify-center text-lg shadow-sm">
-              {icon}
+          {['/cat-all.svg', '/cat-historical.svg', '/cat-scenic.svg'].map((icon, i) => (
+            <div key={i} className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-100 to-amber-100 border-2 border-white flex items-center justify-center text-lg shadow-sm relative overflow-hidden">
+              <div className="relative w-6 h-6">
+                <NextImage src={icon} alt="Place" fill className="object-contain" />
+              </div>
             </div>
           ))}
         </div>
@@ -209,10 +219,18 @@ export default function DearKochi() {
         </div>
         <div className="flex items-end justify-between mt-6">
           <div className="flex gap-4 text-xs font-bold text-gray-600">
-            <div className="bg-white/50 backdrop-blur-sm px-3 py-2 rounded-lg">💧 {current.humidity}%</div>
-            <div className="bg-white/50 backdrop-blur-sm px-3 py-2 rounded-lg">💨 {current.windSpeed}</div>
+            <div className="bg-white/50 backdrop-blur-sm px-3 py-2 rounded-lg flex items-center gap-1">
+              <div className="relative w-4 h-4"><NextImage src="/weather-fog.svg" alt="Humidity" fill className="object-contain" /></div>
+              {current.humidity}%
+            </div>
+            <div className="bg-white/50 backdrop-blur-sm px-3 py-2 rounded-lg flex items-center gap-1">
+              <div className="relative w-4 h-4"><NextImage src="/weather-storm.svg" alt="Wind" fill className="object-contain" /></div>
+              {current.windSpeed}
+            </div>
           </div>
-          <div className="text-5xl filter drop-shadow-sm">{getWeatherIcon(current.weatherCode, current.isDay)}</div>
+          <div className="relative w-16 h-16 filter drop-shadow-sm">
+            <NextImage src={getWeatherIcon(current.weatherCode, current.isDay)} alt="Weather" fill className="object-contain" />
+          </div>
         </div>
       </div>
     );
@@ -230,9 +248,11 @@ export default function DearKochi() {
             <span className="bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold">Metro</span>
             <span className="bg-gradient-to-r from-green-100 to-teal-100 text-green-700 px-3 py-1 rounded-lg text-xs font-bold">Bus</span>
           </div>
-          <p className="text-[11px] text-gray-600 font-medium">Kochi 1 Card Accepted</p>
+          <p className="text-[11px] text-gray-600 font-medium">Information about Kochi transport</p>
         </div>
-        <div className="text-5xl filter drop-shadow-sm">🚆</div>
+        <div className="relative w-16 h-16 filter drop-shadow-sm">
+          <NextImage src="/card-transport.svg" alt="Transport" fill className="object-contain" />
+        </div>
       </div>
     </div>
   );
@@ -256,7 +276,9 @@ export default function DearKochi() {
             </div>
           </div>
         </div>
-        <div className="text-5xl filter drop-shadow-sm">🚨</div>
+        <div className="relative w-16 h-16 filter drop-shadow-sm">
+          <NextImage src="/card-emergency.svg" alt="Emergency" fill className="object-contain" />
+        </div>
       </div>
     </div>
   );
@@ -276,7 +298,9 @@ export default function DearKochi() {
           </div>
           <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Active Now</p>
         </div>
-        <div className="text-5xl filter drop-shadow-sm">💬</div>
+        <div className="relative w-16 h-16 filter drop-shadow-sm">
+          <NextImage src="/card-social.svg" alt="Social" fill className="object-contain" />
+        </div>
       </div>
     </div>
   );
@@ -292,7 +316,9 @@ export default function DearKochi() {
           <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">New Listings</p>
           <p className="text-xl font-bold text-amber-800 mt-1">24+</p>
         </div>
-        <div className="text-5xl filter drop-shadow-sm">🏷️</div>
+        <div className="relative w-16 h-16 filter drop-shadow-sm">
+          <NextImage src="/card-classified.svg" alt="Classifieds" fill className="object-contain" />
+        </div>
       </div>
     </div>
   );
@@ -308,7 +334,9 @@ export default function DearKochi() {
           <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Open Now</p>
           <p className="text-xl font-bold text-indigo-800 mt-1">Explore</p>
         </div>
-        <div className="text-5xl filter drop-shadow-sm">🏪</div>
+        <div className="relative w-16 h-16 filter drop-shadow-sm">
+          <NextImage src="/card-stores.svg" alt="Stores" fill className="object-contain" />
+        </div>
       </div>
     </div>
   );
@@ -324,13 +352,13 @@ export default function DearKochi() {
   };
 
   const cardConfig: Record<CardId, { title: string; icon: string; theme: string }> = {
-    weather: { title: 'Weather', icon: '🌤️', theme: 'blue' },
-    places: { title: 'Must Visit', icon: '🗺️', theme: 'orange' },
-    transport: { title: 'Transport', icon: '🚆', theme: 'blue' },
-    emergency: { title: 'Emergency', icon: '🚨', theme: 'red' },
-    social: { title: 'Social Feed', icon: '💬', theme: 'purple' },
-    classified: { title: 'Classifieds', icon: '🏷️', theme: 'teal' },
-    stores: { title: 'Stores', icon: '🏪', theme: 'blue' },
+    weather: { title: 'Weather', icon: '/card-weather.svg', theme: 'blue' },
+    places: { title: 'Must Visit', icon: '/card-places.svg', theme: 'orange' },
+    transport: { title: 'Transport', icon: '/card-transport.svg', theme: 'blue' },
+    emergency: { title: 'Emergency', icon: '/card-emergency.svg', theme: 'red' },
+    social: { title: 'Social Feed', icon: '/card-social.svg', theme: 'purple' },
+    classified: { title: 'Classifieds', icon: '/card-classified.svg', theme: 'teal' },
+    stores: { title: 'Stores', icon: '/card-stores.svg', theme: 'blue' },
   };
 
   if (!isLoaded) {
@@ -368,7 +396,7 @@ export default function DearKochi() {
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-amber-400 via-orange-400 to-rose-400 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-200 overflow-hidden relative">
                 <NextImage
-                  src="/icon.png"
+                  src="/logo.png"
                   alt="DearKochi Logo"
                   fill
                   className="object-cover"
@@ -386,7 +414,9 @@ export default function DearKochi() {
                 className={`p-2 rounded-full transition-all duration-300 relative ${showNewsSidebar ? 'text-blue-600 bg-blue-50 shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
                 title="Toggle News"
               >
-                <span className="text-xl">📰</span>
+                <div className="relative w-6 h-6">
+                  <NextImage src="/action-refresh.svg" alt="News" fill className="object-contain" />
+                </div>
                 {topNews && topNews.length > 0 && (
                   <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
                 )}

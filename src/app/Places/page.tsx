@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import AddPlaceForm from '../AddPlaceForm';
+import Image from 'next/image';
 
 interface Attraction {
   id: string;
@@ -32,7 +33,7 @@ export default function Places() {
       name: "Fort Kochi",
       description: "Historic neighborhood with colonial architecture, Chinese fishing nets, and art galleries. A blend of Portuguese, Dutch, and British influences.",
       type: "Historical",
-      icon: "🏰",
+      icon: "/cat-historical.svg",
       rating: 4.5,
       bestTime: "October to March",
       entryFee: "Free",
@@ -44,7 +45,7 @@ export default function Places() {
       name: "Marine Drive",
       description: "A beautiful promenade along the backwaters offering stunning views of the sunset and boat rides. Perfect for evening walks and photography.",
       type: "Scenic",
-      icon: "🌊",
+      icon: "/cat-scenic.svg",
       rating: 4.3,
       bestTime: "Evening",
       entryFee: "Free",
@@ -56,7 +57,7 @@ export default function Places() {
       name: "Hill Palace Museum",
       description: "Largest archaeological museum in Kerala with royal collections of the Kochi royal family and heritage buildings spread across 54 acres.",
       type: "Museum",
-      icon: "🏛️",
+      icon: "/cat-museum.svg",
       rating: 4.2,
       bestTime: "9 AM - 5 PM",
       entryFee: "₹30 for adults",
@@ -68,7 +69,7 @@ export default function Places() {
       name: "Mattancherry Palace",
       description: "Also known as Dutch Palace, features Kerala murals depicting Hindu temple art and portraits of Kochi's kings from the 16th century.",
       type: "Historical",
-      icon: "👑",
+      icon: "/cat-historical.svg",
       rating: 4.4,
       bestTime: "9 AM - 5 PM",
       entryFee: "₹5 for Indians",
@@ -80,7 +81,7 @@ export default function Places() {
       name: "Jewish Synagogue",
       description: "Built in 1568, it's the oldest active synagogue in Commonwealth nations with hand-painted Chinese tiles and Belgian chandeliers.",
       type: "Historical",
-      icon: "🕍",
+      icon: "/cat-historical.svg",
       rating: 4.4,
       bestTime: "10 AM - 12 PM, 3 PM - 5 PM",
       entryFee: "Free",
@@ -92,7 +93,7 @@ export default function Places() {
       name: "Cherai Beach",
       description: "A beautiful beach that combines sea and backwaters, ideal for swimming, dolphin spotting, and watching spectacular sunsets.",
       type: "Beach",
-      icon: "🏖️",
+      icon: "/cat-beach.svg",
       rating: 4.3,
       bestTime: "November to February",
       entryFee: "Free",
@@ -126,18 +127,18 @@ export default function Places() {
   };
 
   const categories = [
-    { id: 'all', label: 'All Places', icon: '🌟' },
-    { id: 'Historical', label: 'Historical', icon: '🏰' },
-    { id: 'Scenic', label: 'Scenic', icon: '🌊' },
-    { id: 'Beach', label: 'Beaches', icon: '🏖️' },
-    { id: 'Museum', label: 'Museums', icon: '🏛️' },
-    { id: 'Shopping', label: 'Shopping', icon: '🛍️' },
-    { id: 'Nature', label: 'Nature', icon: '🌳' }
+    { id: 'all', label: 'All Places', icon: '/cat-all.svg' },
+    { id: 'Historical', label: 'Historical', icon: '/cat-historical.svg' },
+    { id: 'Scenic', label: 'Scenic', icon: '/cat-scenic.svg' },
+    { id: 'Beach', label: 'Beaches', icon: '/cat-beach.svg' },
+    { id: 'Museum', label: 'Museums', icon: '/cat-museum.svg' },
+    { id: 'Shopping', label: 'Shopping', icon: '/cat-shopping.svg' },
+    { id: 'Nature', label: 'Nature', icon: '/cat-nature.svg' }
   ];
 
   const currentPlaces = activeTab === 'known' ? knownPlaces : userPlaces;
-  const filteredPlaces = selectedCategory === 'all' 
-    ? currentPlaces 
+  const filteredPlaces = selectedCategory === 'all'
+    ? currentPlaces
     : currentPlaces.filter(place => place.type === selectedCategory);
 
   return (
@@ -149,7 +150,7 @@ export default function Places() {
             {activeTab === 'known' ? 'Explore Kochi' : 'Hidden Gems'}
           </h1>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-            {activeTab === 'known' 
+            {activeTab === 'known'
               ? 'Discover the most beautiful and historic places in Kochi'
               : 'User-submitted places waiting to be discovered'
             }
@@ -161,24 +162,22 @@ export default function Places() {
           <div className="bg-white rounded-lg p-1 border border-gray-200 inline-flex">
             <button
               onClick={() => setActiveTab('known')}
-              className={`px-6 py-3 rounded-md text-sm font-medium transition-all flex items-center space-x-2 ${
-                activeTab === 'known'
-                  ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`px-6 py-3 rounded-md text-sm font-medium transition-all flex items-center space-x-2 ${activeTab === 'known'
+                ? 'bg-blue-500 text-white shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
             >
-              <span>🏛️</span>
+              <div className="relative w-4 h-4"><Image src="/cat-all.svg" alt="Known" fill className="object-contain" /></div>
               <span>Known Places</span>
             </button>
             <button
               onClick={() => setActiveTab('hidden')}
-              className={`px-6 py-3 rounded-md text-sm font-medium transition-all flex items-center space-x-2 ${
-                activeTab === 'hidden'
-                  ? 'bg-orange-500 text-white shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`px-6 py-3 rounded-md text-sm font-medium transition-all flex items-center space-x-2 ${activeTab === 'hidden'
+                ? 'bg-orange-500 text-white shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+                }`}
             >
-              <span>🕵️</span>
+              <div className="relative w-4 h-4"><Image src="/cat-secret.svg" alt="Hidden" fill className="object-contain" /></div>
               <span>Hidden Gems</span>
               {userPlaces.length > 0 && (
                 <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full">
@@ -212,13 +211,12 @@ export default function Places() {
               <button
                 key={category.id}
                 onClick={() => setSelectedCategory(category.id)}
-                className={`px-4 py-2 rounded-full text-sm font-medium flex items-center space-x-2 transition-all ${
-                  selectedCategory === category.id
-                    ? 'bg-blue-500 text-white shadow-sm'
-                    : 'bg-white text-gray-700 border border-gray-200 hover:border-blue-300'
-                }`}
+                className={`px-4 py-2 rounded-full text-sm font-medium flex items-center space-x-2 transition-all ${selectedCategory === category.id
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'bg-white text-gray-700 border border-gray-200 hover:border-blue-300'
+                  }`}
               >
-                <span>{category.icon}</span>
+                <div className="relative w-4 h-4"><Image src={category.icon} alt={category.label} fill className="object-contain" /></div>
                 <span>{category.label}</span>
               </button>
             ))}
@@ -230,10 +228,12 @@ export default function Places() {
           {filteredPlaces.map((place) => (
             <div key={place.id} className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all duration-300 overflow-hidden">
               {/* Place Header */}
-              <div className="bg-gradient-to-r from-blue-500 to-green-500 h-32 flex items-center justify-center">
-                <div className="text-4xl text-white">{place.icon}</div>
+              <div className="bg-gradient-to-r from-blue-500 to-green-500 h-32 flex items-center justify-center relative">
+                <div className="relative w-16 h-16">
+                  <Image src={place.icon} alt={place.name} fill className="object-contain" />
+                </div>
               </div>
-              
+
               <div className="p-5">
                 <div className="flex justify-between items-start mb-3">
                   <div>
@@ -243,8 +243,9 @@ export default function Places() {
                     </span>
                   </div>
                   {activeTab === 'hidden' && (
-                    <span className="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full">
-                      🕵️ User Submitted
+                    <span className="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                      <div className="relative w-3 h-3"><Image src="/user-submitted.svg" alt="User" fill className="object-contain" /></div>
+                      User Submitted
                     </span>
                   )}
                 </div>
@@ -265,19 +266,19 @@ export default function Places() {
                 <div className="space-y-2 mb-4">
                   {place.bestTime && (
                     <div className="flex items-center text-sm text-gray-600">
-                      <span className="mr-2">🕒</span>
+                      <span className="mr-2 relative w-4 h-4"><Image src="/info-clock.svg" alt="Time" fill className="object-contain" /></span>
                       <span className="text-xs">Best time: {place.bestTime}</span>
                     </div>
                   )}
                   {place.entryFee && (
                     <div className="flex items-center text-sm text-gray-600">
-                      <span className="mr-2">💰</span>
+                      <span className="mr-2 relative w-4 h-4"><Image src="/info-fee.svg" alt="Fee" fill className="object-contain" /></span>
                       <span className="text-xs">Entry: {place.entryFee}</span>
                     </div>
                   )}
                   {place.timings && (
                     <div className="flex items-center text-sm text-gray-600">
-                      <span className="mr-2">⏰</span>
+                      <span className="mr-2 relative w-4 h-4"><Image src="/info-clock.svg" alt="Clock" fill className="object-contain" /></span>
                       <span className="text-xs">Timings: {place.timings}</span>
                     </div>
                   )}
@@ -289,7 +290,7 @@ export default function Places() {
                     <h4 className="text-sm font-semibold text-gray-900 mb-2">Highlights:</h4>
                     <div className="flex flex-wrap gap-1">
                       {place.highlights.slice(0, 3).map((highlight, idx) => (
-                        <span 
+                        <span
                           key={idx}
                           className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded"
                         >
@@ -337,17 +338,17 @@ export default function Places() {
 
         {!loading && filteredPlaces.length === 0 && (
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">
-              {activeTab === 'known' ? '🔍' : '🕵️'}
+            <div className="relative w-16 h-16 mb-4 mx-auto">
+              <Image src="/state-empty.svg" alt="Empty" fill className="object-contain" />
             </div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              {activeTab === 'known' 
-                ? 'No places found' 
+              {activeTab === 'known'
+                ? 'No places found'
                 : 'No hidden gems yet'
               }
             </h3>
             <p className="text-gray-600 mb-4">
-              {activeTab === 'known' 
+              {activeTab === 'known'
                 ? 'Try selecting a different category'
                 : 'Be the first to share a hidden gem in Kochi!'
               }

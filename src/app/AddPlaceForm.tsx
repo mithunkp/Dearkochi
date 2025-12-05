@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import Image from 'next/image';
 
 interface AddPlaceFormProps {
   onPlaceAdded: () => void;
@@ -14,7 +15,7 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
     name: '',
     description: '',
     type: 'Historical',
-    icon: '🏰',
+    icon: '/cat-all.svg',
     bestTime: '',
     entryFee: '',
     timings: '',
@@ -23,19 +24,35 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
   const [loading, setLoading] = useState(false);
 
   const placeTypes = [
-    { value: 'Historical', label: 'Historical', icon: '🏰' },
-    { value: 'Scenic', label: 'Scenic', icon: '🌊' },
-    { value: 'Beach', label: 'Beach', icon: '🏖️' },
-    { value: 'Museum', label: 'Museum', icon: '🏛️' },
-    { value: 'Shopping', label: 'Shopping', icon: '🛍️' },
-    { value: 'Nature', label: 'Nature', icon: '🌳' },
-    { value: 'Cafe', label: 'Cafe', icon: '☕' },
-    { value: 'Restaurant', label: 'Restaurant', icon: '🍽️' },
-    { value: 'Viewpoint', label: 'Viewpoint', icon: '🏞️' },
-    { value: 'Local Secret', label: 'Local Secret', icon: '🤫' }
+    { value: 'Historical', label: 'Historical', icon: '/cat-historical.svg' },
+    { value: 'Scenic', label: 'Scenic', icon: '/cat-scenic.svg' },
+    { value: 'Beach', label: 'Beach', icon: '/cat-beach.svg' },
+    { value: 'Museum', label: 'Museum', icon: '/cat-museum.svg' },
+    { value: 'Shopping', label: 'Shopping', icon: '/cat-shopping.svg' },
+    { value: 'Nature', label: 'Nature', icon: '/cat-nature.svg' },
+    { value: 'Cafe', label: 'Cafe', icon: '/cat-cafe.svg' },
+    { value: 'Restaurant', label: 'Restaurant', icon: '/cat-restaurant.svg' },
+    { value: 'Viewpoint', label: 'Viewpoint', icon: '/cat-viewpoint.svg' },
+    { value: 'Local Secret', label: 'Local Secret', icon: '/cat-secret.svg' }
   ];
 
-  const icons = ['🏰', '🌊', '🏖️', '🏛️', '🛍️', '🌳', '🛕', '🎭', '🍽️', '🏨', '☕', '🏞️', '🤫', '🎯', '📸'];
+  const icons = [
+    { label: 'Castle', value: '/cat-historical.svg' },
+    { label: 'Wave', value: '/cat-scenic.svg' },
+    { label: 'Beach', value: '/cat-beach.svg' },
+    { label: 'Museum', value: '/cat-museum.svg' },
+    { label: 'Shopping', value: '/cat-shopping.svg' },
+    { label: 'Nature', value: '/cat-nature.svg' },
+    { label: 'Temple', value: '/icon-temple.svg' },
+    { label: 'Art', value: '/icon-art.svg' },
+    { label: 'Food', value: '/cat-restaurant.svg' },
+    { label: 'Hotel', value: '/icon-hotel.svg' },
+    { label: 'Coffee', value: '/cat-cafe.svg' },
+    { label: 'View', value: '/cat-viewpoint.svg' },
+    { label: 'Secret', value: '/cat-secret.svg' },
+    { label: 'Target', value: '/icon-target.svg' },
+    { label: 'Camera', value: '/icon-camera.svg' }
+  ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,11 +79,12 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
 
       onPlaceAdded();
       onClose();
-      alert('🎉 Thanks for sharing your hidden gem! It will appear in the "Hidden Gems" tab.');
+      onClose();
+      alert('Thanks for sharing your hidden gem! It will appear in the "Hidden Gems" tab.');
     } catch (err: unknown) {
       console.error('Error adding place:', err);
       const e = err as { message?: string };
-      alert('❌ Error adding place: ' + (e?.message ?? String(err)));
+      alert('Error adding place: ' + (e?.message ?? String(err)));
     } finally {
       setLoading(false);
     }
@@ -119,7 +137,7 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   {placeTypes.map((type) => (
-                    <option key={type.value} value={type.value}>{type.icon} {type.label}</option>
+                    <option key={type.value} value={type.value}>{type.label}</option>
                   ))}
                 </select>
               </div>
@@ -132,7 +150,7 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   {icons.map((icon) => (
-                    <option key={icon} value={icon}>{icon}</option>
+                    <option key={icon.value} value={icon.value}>{icon.label}</option>
                   ))}
                 </select>
               </div>
@@ -186,8 +204,9 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
             </div>
 
             <div className="bg-gray-50 border border-gray-100 rounded-lg p-3">
-              <p className="text-gray-700 text-sm">
-                🤫 You are sharing a local secret! This will help others discover hidden gems in Kochi.
+              <p className="text-gray-700 text-sm flex items-center gap-2">
+                <div className="relative w-4 h-4"><Image src="/cat-secret.svg" alt="Secret" fill className="object-contain" /></div>
+                You are sharing a local secret! This will help others discover hidden gems in Kochi.
               </p>
             </div>
 

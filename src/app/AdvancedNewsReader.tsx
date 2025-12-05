@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { NewsItem } from './types';
+import Image from 'next/image';
 
 interface AdvancedNewsReaderProps {
   onClose: () => void;
@@ -99,17 +100,17 @@ export default function AdvancedNewsReader({ onClose, initialArticle }: Advanced
         fetch('/api/translate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            text: article.title, 
-            targetLang: targetLang 
+          body: JSON.stringify({
+            text: article.title,
+            targetLang: targetLang
           })
         }),
         fetch('/api/translate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            text: article.excerpt + ' ' + (article.content || ''), 
-            targetLang: targetLang 
+          body: JSON.stringify({
+            text: article.excerpt + ' ' + (article.content || ''),
+            targetLang: targetLang
           })
         })
       ]);
@@ -189,9 +190,12 @@ export default function AdvancedNewsReader({ onClose, initialArticle }: Advanced
           <div className="flex items-center space-x-4">
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors flex items-center"
             >
-              ← Back
+              <div className="relative w-4 h-4 mr-1">
+                <Image src="/arrow-back.svg" alt="Back" fill className="object-contain" />
+              </div>
+              Back
             </button>
             <div>
               <h1 className="text-xl font-bold">Live News Reader</h1>
@@ -256,7 +260,9 @@ export default function AdvancedNewsReader({ onClose, initialArticle }: Advanced
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
               title="Refresh live news"
             >
-              🔄
+              <div className="relative w-4 h-4">
+                <Image src="/action-refresh.svg" alt="Refresh" fill className="object-contain" />
+              </div>
             </button>
           </div>
         </div>
@@ -305,11 +311,10 @@ export default function AdvancedNewsReader({ onClose, initialArticle }: Advanced
                   <div
                     key={article.id}
                     onClick={() => setCurrentArticle(article)}
-                    className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                      currentArticle?.id === article.id
-                        ? 'bg-blue-100 dark:bg-blue-900 border border-blue-300 dark:border-blue-700'
-                        : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
+                    className={`p-3 rounded-lg cursor-pointer transition-colors ${currentArticle?.id === article.id
+                      ? 'bg-blue-100 dark:bg-blue-900 border border-blue-300 dark:border-blue-700'
+                      : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded">
@@ -370,11 +375,11 @@ export default function AdvancedNewsReader({ onClose, initialArticle }: Advanced
                       {new Date(currentArticle.date).toLocaleString()}
                     </span>
                   </div>
-                  
+
                   <h1 className="text-3xl font-bold mb-4 leading-tight">
                     {currentTranslation?.translatedTitle || currentArticle.title}
                   </h1>
-                  
+
                   <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
                     <span>Source: {currentArticle.source}</span>
                     <span>Language: {languages.find(l => l.code === (currentArticle.language || 'en'))?.name}</span>
@@ -386,7 +391,7 @@ export default function AdvancedNewsReader({ onClose, initialArticle }: Advanced
                   <p className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-6">
                     {currentTranslation?.translatedContent || currentArticle.excerpt}
                   </p>
-                  
+
                   {currentArticle.content && (
                     <div className="whitespace-pre-line">
                       {currentTranslation?.translatedContent ? currentTranslation.translatedContent : currentArticle.content}
@@ -415,12 +420,24 @@ export default function AdvancedNewsReader({ onClose, initialArticle }: Advanced
                   >
                     Read Full Article at Source
                   </button>
-                  
+
                   <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
                     <span>Share:</span>
-                    <button className="hover:text-blue-500">📱</button>
-                    <button className="hover:text-blue-500">📧</button>
-                    <button className="hover:text-blue-500">🔗</button>
+                    <button className="hover:text-blue-500">
+                      <div className="relative w-4 h-4">
+                        <Image src="/share-mobile.svg" alt="Mobile" fill className="object-contain" />
+                      </div>
+                    </button>
+                    <button className="hover:text-blue-500">
+                      <div className="relative w-4 h-4">
+                        <Image src="/share-email.svg" alt="Email" fill className="object-contain" />
+                      </div>
+                    </button>
+                    <button className="hover:text-blue-500">
+                      <div className="relative w-4 h-4">
+                        <Image src="/share-link.svg" alt="Link" fill className="object-contain" />
+                      </div>
+                    </button>
                   </div>
                 </div>
               </article>

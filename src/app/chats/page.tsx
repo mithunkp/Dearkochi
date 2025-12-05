@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
 type ChatListItem = {
     id: number;
@@ -110,7 +111,9 @@ export default function ChatsPage() {
 
             {chats.length === 0 ? (
                 <div className="bg-white rounded-xl shadow-lg border p-12 text-center">
-                    <div className="text-6xl mb-4">💬</div>
+                    <div className="relative w-16 h-16 mb-4 mx-auto">
+                        <Image src="/state-empty.svg" alt="Empty" fill className="object-contain" />
+                    </div>
                     <h2 className="text-xl font-semibold text-gray-900 mb-2">No chats yet</h2>
                     <p className="text-gray-600 mb-6">
                         Start chatting with sellers by clicking &quot;Chat with Seller&quot; on any ad

@@ -21,6 +21,10 @@ export interface WeatherData {
         time: string[];
         temperature: number[];
         weatherCode: number[];
+        aqi: number[];
+        humidity: number[]; // Added hourly humidity
+        windSpeed: number[]; // Added hourly wind speed
+        uvIndex: number[]; // Added hourly UV index
     };
 }
 
@@ -28,11 +32,11 @@ export async function getWeather(): Promise<WeatherData | null> {
     try {
         const [weatherRes, aqiRes] = await Promise.all([
             fetch(
-                'https://api.open-meteo.com/v1/forecast?latitude=9.9312&longitude=76.2673&current=temperature_2m,relative_humidity_2m,is_day,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max&timezone=auto',
+                'https://api.open-meteo.com/v1/forecast?latitude=9.9312&longitude=76.2673&current=temperature_2m,relative_humidity_2m,is_day,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m,uv_index&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max&timezone=auto',
                 { next: { revalidate: 3600 } }
             ),
             fetch(
-                'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=9.9312&longitude=76.2673&current=us_aqi',
+                'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=9.9312&longitude=76.2673&current=us_aqi&hourly=us_aqi',
                 { next: { revalidate: 3600 } }
             )
         ]);
@@ -65,6 +69,10 @@ export async function getWeather(): Promise<WeatherData | null> {
                 time: weatherData.hourly.time,
                 temperature: weatherData.hourly.temperature_2m,
                 weatherCode: weatherData.hourly.weather_code,
+                aqi: aqiData.hourly.us_aqi,
+                humidity: weatherData.hourly.relative_humidity_2m,
+                windSpeed: weatherData.hourly.wind_speed_10m,
+                uvIndex: weatherData.hourly.uv_index,
             }
         };
     } catch (error) {
@@ -102,13 +110,13 @@ export function getWeatherDescription(code: number): string {
 }
 
 export function getWeatherIcon(code: number, isDay: boolean = true): string {
-    // Simple mapping, can be expanded
-    if (code === 0) return isDay ? '☀️' : '🌙';
-    if (code >= 1 && code <= 3) return isDay ? '⛅' : '☁️';
-    if (code >= 45 && code <= 48) return '🌫️';
-    if (code >= 51 && code <= 67) return '🌧️';
-    if (code >= 71 && code <= 77) return '❄️';
-    if (code >= 80 && code <= 82) return '🌦️';
-    if (code >= 95) return '⛈️';
-    return '🌡️';
+    // Map codes to new SVG icons
+    if (code <= 1) return '/weather-clear.svg';
+    if (code <= 3) return '/weather-cloudy.svg';
+    if (code <= 48) return '/weather-fog.svg';
+    if (code <= 67 || (code >= 80 && code <= 82)) return '/weather-rain.svg';
+    if (code <= 77 || code === 85 || code === 86) return '/weather-snow.svg';
+    if (code >= 95) return '/weather-storm.svg';
+
+    return '/weather-clear.svg'; // Default
 }

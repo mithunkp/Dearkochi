@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import Image from 'next/image';
 
 type Category = {
     id: number;
@@ -123,7 +124,7 @@ export default function ClassifiedPage() {
                                 : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                                 }`}
                         >
-                            <span>{cat.icon}</span>
+                            <div className="relative w-4 h-4"><Image src={cat.icon} alt={cat.name} fill className="object-contain" /></div>
                             {cat.name}
                         </button>
                     ))}
@@ -138,8 +139,8 @@ export default function ClassifiedPage() {
                                     {ad.image_url ? (
                                         <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
                                     ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-gray-300 text-4xl bg-gray-50">
-                                            📷
+                                        <div className="relative w-16 h-16">
+                                            <Image src="/placeholder-image.svg" alt="No Image" fill className="object-contain" />
                                         </div>
                                     )}
                                     <div className="absolute top-3 left-3">
@@ -173,7 +174,9 @@ export default function ClassifiedPage() {
 
                 {filteredAds.length === 0 && (
                     <div className="text-center py-20">
-                        <div className="text-6xl mb-4">🏷️</div>
+                        <div className="relative w-16 h-16 mb-4 mx-auto">
+                            <Image src="/state-empty.svg" alt="Empty" fill className="object-contain" />
+                        </div>
                         <h3 className="text-xl font-bold text-gray-900 mb-2">No ads found</h3>
                         <p className="text-gray-500">Be the first to post an ad in this category!</p>
                         <Link href="/classified/new" className="inline-block mt-6 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium">

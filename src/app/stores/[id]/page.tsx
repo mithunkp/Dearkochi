@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
 type Store = {
     id: number;
@@ -210,7 +211,7 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
                         <div className="text-right">
                             <div className="flex items-center gap-1 justify-end">
                                 <span className="text-2xl font-bold text-amber-500">{averageRating ? averageRating.toFixed(1) : 'New'}</span>
-                                <span className="text-amber-400 text-xl">★</span>
+                                <div className="relative w-6 h-6"><Image src="/rating-star.svg" alt="Star" fill className="object-contain" /></div>
                             </div>
                             <p className="text-xs text-gray-500">{ratingCount} ratings</p>
                         </div>
@@ -281,7 +282,7 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
                                 className={`text-2xl transition-transform hover:scale-110 ${(userRating && star <= userRating) ? 'text-amber-400' : 'text-gray-300 hover:text-amber-300'
                                     }`}
                             >
-                                ★
+                                <div className="relative w-6 h-6"><Image src="/rating-star.svg" alt="Star" fill className="object-contain" /></div>
                             </button>
                         ))}
                     </div>

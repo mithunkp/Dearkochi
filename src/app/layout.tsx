@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     description: 'Discover the best of Fort Kochi and Ernakulam. Find local news, classifieds, stores, emergency contacts, and tourist attractions.',
     images: [
       {
-        url: '/og-image.jpg', // You should add an actual OG image later
+        url: '/og-image.png',
         width: 1200,
         height: 630,
         alt: 'DearKochi - Experience Fort Kochi',
@@ -44,6 +44,11 @@ export const metadata: Metadata = {
   robots: {
     index: true,
     follow: true,
+  },
+  icons: {
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png',
   },
 };
 

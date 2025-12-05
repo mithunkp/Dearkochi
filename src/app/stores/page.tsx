@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import Image from 'next/image';
 
 type Category = {
     id: number;
@@ -149,7 +150,7 @@ export default function StoresPage() {
                             </div>
 
                             <div className="flex items-center gap-1 mb-4">
-                                <span className="text-amber-400 text-lg">★</span>
+                                <div className="relative w-4 h-4"><Image src="/rating-star.svg" alt="Star" fill className="object-contain" /></div>
                                 <span className="font-bold text-gray-900">{ratings[store.id] ? ratings[store.id].toFixed(1) : 'New'}</span>
                             </div>
 
@@ -172,7 +173,9 @@ export default function StoresPage() {
 
             {filteredStores.length === 0 && (
                 <div className="text-center py-20">
-                    <div className="text-6xl mb-4">🏪</div>
+                    <div className="relative w-16 h-16 mb-4 mx-auto">
+                        <Image src="/state-empty.svg" alt="Empty" fill className="object-contain" />
+                    </div>
                     <h3 className="text-xl font-bold text-gray-900 mb-2">No stores found</h3>
                     <p className="text-gray-500">Try selecting a different category or add your own store.</p>
                 </div>

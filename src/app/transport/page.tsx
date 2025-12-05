@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -142,7 +143,9 @@ export default async function TransportPage() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <Link href="/" className="w-9 h-9 bg-gradient-to-tr from-blue-600 to-blue-500 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-200 hover:opacity-90 transition-opacity">
-                            ←
+                            <div className="relative w-4 h-4">
+                                <Image src="/arrow-back.svg" alt="Back" fill className="object-contain" />
+                            </div>
                         </Link>
                         <div>
                             <h1 className="text-lg font-bold text-gray-900 leading-none tracking-tight">Transport Hub</h1>
@@ -170,15 +173,16 @@ export default async function TransportPage() {
                         {/* Fuel Prices */}
                         <section>
                             <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                <span>⛽</span> Fuel Prices <span className="text-xs font-normal text-gray-400 ml-auto">Updated Today</span>
+                                <div className="relative w-6 h-6"><Image src="/transport-fuel.svg" alt="Fuel" fill className="object-contain" /></div> Fuel Prices <span className="text-xs font-normal text-gray-400 ml-auto">Updated Today</span>
                             </h2>
                             <div className="grid grid-cols-3 gap-4">
                                 {displayFuel.map((fuel, i) => (
                                     <div key={i} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center">
                                         <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{fuel.type}</div>
                                         <div className="text-xl font-black text-gray-900">{fuel.price}</div>
-                                        <div className={`text-[10px] font-bold mt-1 ${fuel.trend === 'up' ? 'text-red-500' : 'text-green-500'}`}>
-                                            {fuel.trend === 'up' ? '▲ Rising' : '● Stable'}
+                                        <div className={`text-[10px] font-bold mt-1 ${fuel.trend === 'up' ? 'text-red-500' : 'text-green-500'} flex items-center justify-center gap-1`}>
+                                            <div className="relative w-3 h-3"><Image src={fuel.trend === 'up' ? '/trend-up.svg' : '/trend-stable.svg'} alt={fuel.trend} fill className="object-contain" /></div>
+                                            {fuel.trend === 'up' ? 'Rising' : 'Stable'}
                                         </div>
                                     </div>
                                 ))}
@@ -192,7 +196,7 @@ export default async function TransportPage() {
                         <section className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 h-full">
                             <div className="flex items-center justify-between mb-6">
                                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                    <span>🚥</span> Traffic Alerts
+                                    <div className="relative w-6 h-6"><Image src="/transport-traffic.svg" alt="Traffic" fill className="object-contain" /></div> Traffic Alerts
                                 </h2>
                                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
                             </div>

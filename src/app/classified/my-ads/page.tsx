@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import Image from 'next/image';
 
 type Ad = {
     id: number;
@@ -97,7 +98,9 @@ export default function MyAdsPage() {
 
             {ads.length === 0 ? (
                 <div className="text-center py-20 bg-white rounded-xl border">
-                    <div className="text-6xl mb-4">📦</div>
+                    <div className="relative w-16 h-16 mb-4 mx-auto">
+                        <Image src="/state-empty.svg" alt="Empty" fill className="object-contain" />
+                    </div>
                     <h3 className="text-xl font-bold text-gray-900 mb-2">No ads yet</h3>
                     <p className="text-gray-500 mb-6">Start by posting your first ad!</p>
                     <Link href="/classified/new" className="inline-block px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium">
@@ -112,8 +115,8 @@ export default function MyAdsPage() {
                                 {ad.image_url ? (
                                     <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
                                 ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-300 text-4xl">
-                                        📷
+                                    <div className="relative w-16 h-16">
+                                        <Image src="/placeholder-image.svg" alt="No Image" fill className="object-contain" />
                                     </div>
                                 )}
                                 <div className="absolute top-3 left-3">

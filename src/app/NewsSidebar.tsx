@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { NewsItem } from "./types";
 import AdvancedNewsReader from './AdvancedNewsReader';
+import Image from 'next/image';
 
 interface NewsSidebarProps {
   onClose: () => void;
@@ -87,7 +88,15 @@ export default function NewsSidebar({ onClose }: NewsSidebarProps) {
             title="Refresh news"
             disabled={loading}
           >
-            {loading ? '⏳' : '🔄'}
+            {loading ? (
+              <div className="relative w-4 h-4 animate-spin">
+                <Image src="/action-refresh.svg" alt="Loading" fill className="object-contain" />
+              </div>
+            ) : (
+              <div className="relative w-4 h-4">
+                <Image src="/action-refresh.svg" alt="Refresh" fill className="object-contain" />
+              </div>
+            )}
           </button>
         </div>
         <div className="flex items-center space-x-2">
@@ -96,10 +105,14 @@ export default function NewsSidebar({ onClose }: NewsSidebarProps) {
             className="text-blue-500 hover:text-blue-700 transition-colors text-sm"
             title="Open full news reader"
           >
-            ⛶
+            <div className="relative w-4 h-4">
+              <Image src="/action-fullscreen.svg" alt="Full Screen" fill className="object-contain" />
+            </div>
           </button>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-sm">
-            ✕
+            <div className="relative w-4 h-4">
+              <Image src="/action-close.svg" alt="Close" fill className="object-contain" />
+            </div>
           </button>
         </div>
       </div>
@@ -112,8 +125,8 @@ export default function NewsSidebar({ onClose }: NewsSidebarProps) {
               key={category}
               onClick={() => setSelectedCategory(category)}
               className={`px-2 py-1 text-xs rounded capitalize ${selectedCategory === category
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
             >
               {category}
@@ -150,7 +163,9 @@ export default function NewsSidebar({ onClose }: NewsSidebarProps) {
                   {item.category}
                 </span>
                 <div className="flex items-center space-x-1">
-                  <span className="text-green-500 text-xs">●</span>
+                  <div className="relative w-2 h-2">
+                    <Image src="/status-live.svg" alt="Live" fill className="object-contain" />
+                  </div>
                   <span className="text-gray-500 text-xs">
                     {new Date(item.date).toLocaleTimeString()}
                   </span>
@@ -165,7 +180,10 @@ export default function NewsSidebar({ onClose }: NewsSidebarProps) {
               <div className="flex justify-between items-center">
                 <span className="text-gray-400 text-xs">{item.source}</span>
                 <span className="text-blue-600 text-xs font-medium">
-                  Read →
+                  Read
+                  <div className="relative w-3 h-3 ml-1">
+                    <Image src="/arrow-right.svg" alt="Read" fill className="object-contain" />
+                  </div>
                 </span>
               </div>
             </div>
