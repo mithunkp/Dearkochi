@@ -29,10 +29,30 @@ html {
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-  line-height: 1.6;
+  background: hsl(210 20% 96%);
+  color: hsl(220 20% 10%);
+  font-family: var(--font-inter), sans-serif;
+  overflow-x: hidden;
+  min-height: 100vh;
+  position: relative;
+}
+
+.page-bg {
+  position: fixed;
+  inset: 0;
+  background: url("https://images.pexels.com/photos/1440476/pexels-photo-1440476.jpeg?auto=compress&cs=tinysrgb&w=1200") center/cover no-repeat;
+  z-index: -1;
+}
+
+.page-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right,
+    hsl(210 20% 96% / 0.95),
+    hsl(210 20% 96% / 0.8),
+    hsl(210 20% 96% / 0.3)
+  );
 }
 
 /* Smooth animations */

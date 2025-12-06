@@ -3,7 +3,11 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { ArrowLeft, Fuel, AlertTriangle, Map, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+
 import TransportModes from './TransportModes';
+import { Header } from '@/components/Header';
+import { GlassCard } from '@/components/ui/GlassCard';
 
 // Types
 type TrafficAlert = {
@@ -137,25 +141,19 @@ export default async function TransportPage() {
     ] as FuelPrice[];
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
-            {/* Header */}
-            <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-30">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <Link href="/" className="w-9 h-9 bg-gradient-to-tr from-blue-600 to-blue-500 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-200 hover:opacity-90 transition-opacity">
-                            <div className="relative w-4 h-4">
-                                <Image src="/arrow-back.svg" alt="Back" fill className="object-contain" />
-                            </div>
-                        </Link>
-                        <div>
-                            <h1 className="text-lg font-bold text-gray-900 leading-none tracking-tight">Transport Hub</h1>
-                            <p className="text-[10px] font-medium text-gray-500 mt-0.5 uppercase tracking-wider">Kochi City Guide</p>
-                        </div>
+        <div className="min-h-screen flex flex-col">
+            <Header />
+
+            <main className="flex-1 px-8 py-10 max-w-7xl mx-auto w-full">
+                <div className="flex items-center gap-4 mb-8">
+                    <Link href="/" className="w-10 h-10 rounded-full bg-white/60 backdrop-blur-sm border border-white/40 flex items-center justify-center text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">
+                        <ArrowLeft size={20} />
+                    </Link>
+                    <div>
+                        <h1 className="text-3xl font-bold text-slate-800">Transport Hub</h1>
+                        <p className="text-sm text-slate-500 font-medium">Kochi City Guide</p>
                     </div>
                 </div>
-            </header>
-
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
@@ -163,53 +161,55 @@ export default async function TransportPage() {
                     <div className="lg:col-span-2 space-y-8">
 
                         {/* Transport Modes with Metro Timetable */}
-                        <TransportModes
-                            metroStations={metroStations}
-                            waterMetroSchedules={waterMetroSchedules}
-                            metroError={metroError}
-                            waterMetroError={waterMetroError}
-                        />
+                        <GlassCard>
+                            <TransportModes
+                                metroStations={metroStations}
+                                waterMetroSchedules={waterMetroSchedules}
+                                metroError={metroError}
+                                waterMetroError={waterMetroError}
+                            />
+                        </GlassCard>
 
                         {/* Fuel Prices */}
-                        <section>
-                            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                <div className="relative w-6 h-6"><Image src="/transport-fuel.svg" alt="Fuel" fill className="object-contain" /></div> Fuel Prices <span className="text-xs font-normal text-gray-400 ml-auto">Updated Today</span>
+                        <GlassCard>
+                            <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                <Fuel className="text-orange-500" size={24} /> Fuel Prices <span className="text-xs font-normal text-slate-400 ml-auto">Updated Today</span>
                             </h2>
                             <div className="grid grid-cols-3 gap-4">
                                 {displayFuel.map((fuel, i) => (
-                                    <div key={i} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-center">
-                                        <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{fuel.type}</div>
-                                        <div className="text-xl font-black text-gray-900">{fuel.price}</div>
+                                    <div key={i} className="bg-white/50 rounded-2xl p-4 text-center border border-white/40">
+                                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{fuel.type}</div>
+                                        <div className="text-xl font-black text-slate-800">{fuel.price}</div>
                                         <div className={`text-[10px] font-bold mt-1 ${fuel.trend === 'up' ? 'text-red-500' : 'text-green-500'} flex items-center justify-center gap-1`}>
-                                            <div className="relative w-3 h-3"><Image src={fuel.trend === 'up' ? '/trend-up.svg' : '/trend-stable.svg'} alt={fuel.trend} fill className="object-contain" /></div>
-                                            {fuel.trend === 'up' ? 'Rising' : 'Stable'}
+                                            {fuel.trend === 'up' ? <TrendingUp size={12} /> : fuel.trend === 'down' ? <TrendingDown size={12} /> : <Minus size={12} />}
+                                            {fuel.trend === 'up' ? 'Rising' : fuel.trend === 'down' ? 'Falling' : 'Stable'}
                                         </div>
                                     </div>
                                 ))}
                             </div>
-                        </section>
+                        </GlassCard>
 
                     </div>
 
                     {/* Right Column: Traffic Alerts */}
                     <div className="lg:col-span-1">
-                        <section className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 h-full">
+                        <GlassCard className="h-full">
                             <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                    <div className="relative w-6 h-6"><Image src="/transport-traffic.svg" alt="Traffic" fill className="object-contain" /></div> Traffic Alerts
+                                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                    <AlertTriangle className="text-red-500" size={24} /> Traffic Alerts
                                 </h2>
                                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
                             </div>
 
                             <div className="space-y-4">
                                 {displayTraffic.map((alert) => (
-                                    <div key={alert.id} className="relative pl-4 border-l-2 border-gray-100 pb-4 last:pb-0 last:border-0">
+                                    <div key={alert.id} className="relative pl-4 border-l-2 border-slate-200 pb-4 last:pb-0 last:border-0">
                                         <div className={`absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white ${alert.severity === 'high' ? 'bg-red-500' : alert.severity === 'medium' ? 'bg-orange-500' : 'bg-green-500'
                                             }`}></div>
 
                                         <div className="flex justify-between items-start">
-                                            <h4 className="font-bold text-gray-900 text-sm">{alert.location}</h4>
-                                            <span className="text-[10px] text-gray-400 font-medium">{alert.time}</span>
+                                            <h4 className="font-bold text-slate-800 text-sm">{alert.location}</h4>
+                                            <span className="text-[10px] text-slate-400 font-medium">{alert.time}</span>
                                         </div>
 
                                         <div className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide mt-1 mb-1 ${alert.severity === 'high' ? 'bg-red-50 text-red-600' : alert.severity === 'medium' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'
@@ -217,17 +217,17 @@ export default async function TransportPage() {
                                             {alert.status}
                                         </div>
 
-                                        <p className="text-xs text-gray-500 leading-relaxed">
+                                        <p className="text-xs text-slate-500 leading-relaxed">
                                             {alert.details}
                                         </p>
                                     </div>
                                 ))}
                             </div>
 
-                            <button className="w-full mt-6 py-3 rounded-xl bg-gray-50 text-gray-600 text-xs font-bold hover:bg-gray-100 transition-colors">
-                                View Live Traffic Map
+                            <button className="w-full mt-6 py-3 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2">
+                                <Map size={14} /> View Live Traffic Map
                             </button>
-                        </section>
+                        </GlassCard>
                     </div>
 
                 </div>

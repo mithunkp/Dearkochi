@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
+
 import { WeatherData, getWeatherIcon, getWeatherDescription } from '@/lib/weather';
 
 interface CurrentWeatherCardProps {
@@ -89,7 +89,10 @@ export default function CurrentWeatherCard({ weather }: CurrentWeatherCardProps)
             >
                 <div className="absolute top-0 right-0 p-8 opacity-10 select-none pointer-events-none">
                     <div className="relative w-64 h-64">
-                        <Image src={getWeatherIcon(current.weatherCode, current.isDay)} alt="Weather" fill className="object-contain" />
+                        {(() => {
+                            const Icon = getWeatherIcon(current.weatherCode, current.isDay);
+                            return <Icon className="w-full h-full text-blue-500" />;
+                        })()}
                     </div>
                 </div>
 
@@ -163,8 +166,8 @@ export default function CurrentWeatherCard({ weather }: CurrentWeatherCardProps)
                                         key={tab.id}
                                         onClick={() => setActiveMetric(tab.id)}
                                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${activeMetric === tab.id
-                                                ? 'bg-white text-blue-600 shadow-sm'
-                                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+                                            ? 'bg-white text-blue-600 shadow-sm'
+                                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
                                             }`}
                                     >
                                         {tab.label}

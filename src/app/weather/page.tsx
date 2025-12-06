@@ -52,7 +52,10 @@ export default async function WeatherPage() {
                                             {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </div>
                                         <div className="relative w-8 h-8">
-                                            <Image src={getWeatherIcon(hourly.weatherCode[i], true)} alt="Weather" fill className="object-contain" />
+                                            {(() => {
+                                                const Icon = getWeatherIcon(hourly.weatherCode[i], true);
+                                                return <Icon className="w-full h-full text-blue-500" />;
+                                            })()}
                                         </div>
                                         <div className="font-bold text-gray-900 w-12 text-right">
                                             {Math.round(hourly.temperature[i])}°
@@ -76,7 +79,10 @@ export default async function WeatherPage() {
                                     <div key={i} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors">
                                         <div className="w-24 font-medium text-gray-700">{i === 0 ? 'Today' : dayName}</div>
                                         <div className="relative w-8 h-8">
-                                            <Image src={getWeatherIcon(daily.weatherCode[i])} alt="Weather" fill className="object-contain" />
+                                            {(() => {
+                                                const Icon = getWeatherIcon(daily.weatherCode[i]);
+                                                return <Icon className="w-full h-full text-blue-500" />;
+                                            })()}
                                         </div>
                                         <div className="flex gap-3 w-24 justify-end">
                                             <span className="font-bold text-gray-900">{Math.round(daily.temperatureMax[i])}°</span>

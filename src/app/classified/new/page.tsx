@@ -28,7 +28,7 @@ export default function NewAdPage() {
 
     useEffect(() => {
         if (!authLoading && !user) {
-            router.push('/');
+            router.push('/profile');
         }
         fetchCategories();
     }, [user, authLoading, router]);

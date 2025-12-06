@@ -1,45 +1,40 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from '@/lib/auth-context';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  variable: "--font-inter",
 });
 
 export const metadata: Metadata = {
   title: {
-    template: '%s | DearKochi - Experience Fort Kochi',
-    default: 'DearKochi - Your Ultimate Guide to Fort Kochi & Ernakulam',
+    template: '%s | Dear Kochi',
+    default: 'Dear Kochi - Experiance Hub',
   },
-  description: "Discover the best of Fort Kochi and Ernakulam. Find local news, classifieds, stores, emergency contacts, and tourist attractions in Kochi, Kerala.",
-  keywords: ["Kochi", "Fort Kochi", "Ernakulam", "Kerala Tourism", "Kochi News", "Kochi Classifieds", "Kochi Stores", "Kochi Emergency Numbers"],
+  description: "Dear Kochi - Experiance Hub",
+  keywords: ["Dear Kochi", "Solar", "Energy", "Dashboard", "Grid Performance"],
   openGraph: {
     type: 'website',
     locale: 'en_IN',
     url: 'https://dearkochi.com',
-    siteName: 'DearKochi',
-    title: 'DearKochi - Your Ultimate Guide to Fort Kochi & Ernakulam',
-    description: 'Discover the best of Fort Kochi and Ernakulam. Find local news, classifieds, stores, emergency contacts, and tourist attractions.',
+    siteName: 'Dear Kochi',
+    title: 'DearKochi - Grid Performance Dashboard',
+    description: 'Dear Kochi - Experiance Hub',
     images: [
       {
         url: '/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'DearKochi - Experience Fort Kochi',
+        alt: 'DearKochi Dashboard',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DearKochi - Your Ultimate Guide to Fort Kochi & Ernakulam',
-    description: 'Discover the best of Fort Kochi and Ernakulam. Find local news, classifieds, stores, emergency contacts, and tourist attractions.',
+    title: 'Dear Kochi - Grid Performance Dashboard',
+    description: 'Dear Kochi - Experiance Hub',
   },
   robots: {
     index: true,
@@ -60,8 +55,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} antialiased`}
+        suppressHydrationWarning
       >
+        <div className="page-bg" />
         <AuthProvider>
           {children}
         </AuthProvider>

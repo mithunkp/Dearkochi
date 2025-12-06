@@ -3,7 +3,27 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import Image from 'next/image';
+import {
+    MessageCircle,
+    Plus,
+    ArrowLeft,
+    Tag,
+    Calendar,
+    DollarSign,
+    LayoutGrid,
+    Smartphone,
+    Car,
+    Home,
+    Briefcase,
+    Bike,
+    Sofa,
+    Shirt,
+    MoreHorizontal,
+    Laptop
+} from 'lucide-react';
+
+import { Header } from '@/components/Header';
+import { GlassCard } from '@/components/ui/GlassCard';
 
 type Category = {
     id: number;
@@ -75,31 +95,50 @@ export default function ClassifiedPage() {
         }
     };
 
+    const getCategoryIcon = (name: string) => {
+        const lowerName = name.toLowerCase();
+        if (lowerName.includes('electronic') || lowerName.includes('mobile') || lowerName.includes('phone')) return Smartphone;
+        if (lowerName.includes('computer') || lowerName.includes('laptop')) return Laptop;
+        if (lowerName.includes('vehicle') || lowerName.includes('car')) return Car;
+        if (lowerName.includes('bike') || lowerName.includes('scooter')) return Bike;
+        if (lowerName.includes('property') || lowerName.includes('house') || lowerName.includes('rent')) return Home;
+        if (lowerName.includes('job') || lowerName.includes('work')) return Briefcase;
+        if (lowerName.includes('furniture')) return Sofa;
+        if (lowerName.includes('fashion') || lowerName.includes('cloth')) return Shirt;
+        return MoreHorizontal;
+    };
+
     const filteredAds = selectedCategory === 'all'
         ? ads
         : ads.filter(ad => ad.category_id?.toString() === selectedCategory);
 
-    if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading...</div>;
+    if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
     return (
-        <div className="min-h-screen bg-gray-50 font-sans pb-20">
-            <div className="max-w-7xl mx-auto p-6">
+        <div className="min-h-screen flex flex-col">
+            <Header />
 
+            <main className="flex-1 px-8 py-10 max-w-7xl mx-auto w-full">
                 {/* Header */}
                 <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Classifieds</h1>
-                        <p className="text-gray-500 mt-1">Buy, sell, and find services in Kochi</p>
+                    <div className="flex items-center gap-4">
+                        <Link href="/" className="w-10 h-10 rounded-full bg-white/60 backdrop-blur-sm border border-white/40 flex items-center justify-center text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">
+                            <ArrowLeft size={20} />
+                        </Link>
+                        <div>
+                            <h1 className="text-3xl font-bold text-slate-800">Classifieds</h1>
+                            <p className="text-sm text-slate-500 font-medium">Buy, sell, and find services</p>
+                        </div>
                     </div>
                     <div className="flex gap-3">
-                        <Link href="/chats" className="px-5 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 font-medium transition-colors flex items-center gap-2">
-                            💬 My Chats
+                        <Link href="/chats" className="px-5 py-2.5 bg-white/60 backdrop-blur-sm text-slate-700 border border-white/40 rounded-xl hover:bg-white font-medium transition-colors flex items-center gap-2">
+                            <MessageCircle size={18} /> My Chats
                         </Link>
-                        <Link href="/classified/my-ads" className="px-5 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 font-medium transition-colors">
+                        <Link href="/classified/my-ads" className="px-5 py-2.5 bg-white/60 backdrop-blur-sm text-slate-700 border border-white/40 rounded-xl hover:bg-white font-medium transition-colors">
                             My Ads
                         </Link>
                         <Link href="/classified/new" className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 font-medium transition-colors flex items-center gap-2">
-                            <span>+</span> Post Ad
+                            <Plus size={18} /> Post Ad
                         </Link>
                     </div>
                 </div>
@@ -108,43 +147,47 @@ export default function ClassifiedPage() {
                 <div className="flex gap-3 mb-8 overflow-x-auto pb-4 scrollbar-hide">
                     <button
                         onClick={() => setSelectedCategory('all')}
-                        className={`px-5 py-2.5 rounded-full whitespace-nowrap text-sm font-medium transition-all ${selectedCategory === 'all'
-                            ? 'bg-gray-900 text-white shadow-md'
-                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                        className={`px-5 py-2.5 rounded-full whitespace-nowrap text-sm font-medium transition-all flex items-center gap-2 ${selectedCategory === 'all'
+                            ? 'bg-slate-800 text-white shadow-md'
+                            : 'bg-white/60 text-slate-600 border border-white/40 hover:bg-white'
                             }`}
                     >
+                        <LayoutGrid size={16} />
                         All Items
                     </button>
-                    {categories.map((cat) => (
-                        <button
-                            key={cat.id}
-                            onClick={() => setSelectedCategory(cat.id.toString())}
-                            className={`px-5 py-2.5 rounded-full whitespace-nowrap text-sm font-medium transition-all flex items-center gap-2 ${selectedCategory === cat.id.toString()
-                                ? 'bg-gray-900 text-white shadow-md'
-                                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                                }`}
-                        >
-                            <div className="relative w-4 h-4"><Image src={cat.icon} alt={cat.name} fill className="object-contain" /></div>
-                            {cat.name}
-                        </button>
-                    ))}
+                    {categories.map((cat) => {
+                        const Icon = getCategoryIcon(cat.name);
+                        return (
+                            <button
+                                key={cat.id}
+                                onClick={() => setSelectedCategory(cat.id.toString())}
+                                className={`px-5 py-2.5 rounded-full whitespace-nowrap text-sm font-medium transition-all flex items-center gap-2 ${selectedCategory === cat.id.toString()
+                                    ? 'bg-slate-800 text-white shadow-md'
+                                    : 'bg-white/60 text-slate-600 border border-white/40 hover:bg-white'
+                                    }`}
+                            >
+                                <Icon size={16} />
+                                {cat.name}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {/* Ads Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {filteredAds.map((ad) => (
                         <Link href={`/classified/${ad.id}`} key={ad.id} className="group">
-                            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-full flex flex-col">
-                                <div className="aspect-[4/3] bg-gray-100 relative overflow-hidden">
+                            <GlassCard className="h-full flex flex-col p-0 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border-0">
+                                <div className="aspect-[4/3] bg-slate-100 relative overflow-hidden">
                                     {ad.image_url ? (
                                         <img src={ad.image_url} alt={ad.title} className="w-full h-full object-cover" />
                                     ) : (
-                                        <div className="relative w-16 h-16">
-                                            <Image src="/placeholder-image.svg" alt="No Image" fill className="object-contain" />
+                                        <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                            <Tag size={48} />
                                         </div>
                                     )}
                                     <div className="absolute top-3 left-3">
-                                        <span className="px-2 py-1 bg-white/90 backdrop-blur-sm rounded-lg text-xs font-bold uppercase tracking-wider text-gray-800 shadow-sm">
+                                        <span className="px-2 py-1 bg-white/90 backdrop-blur-sm rounded-lg text-xs font-bold uppercase tracking-wider text-slate-800 shadow-sm">
                                             {ad.ad_type}
                                         </span>
                                     </div>
@@ -152,39 +195,40 @@ export default function ClassifiedPage() {
 
                                 <div className="p-4 flex flex-col flex-grow">
                                     <div className="flex justify-between items-start mb-2">
-                                        <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1">{ad.title}</h3>
+                                        <h3 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">{ad.title}</h3>
                                     </div>
 
-                                    <p className="text-gray-500 text-sm line-clamp-2 mb-4 flex-grow">{ad.description}</p>
+                                    <p className="text-slate-500 text-sm line-clamp-2 mb-4 flex-grow">{ad.description}</p>
 
-                                    <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-50">
-                                        <span className="text-lg font-bold text-gray-900">
-                                            {ad.price ? `₹${ad.price}` : 'Contact for Price'}
-                                            {ad.price_unit && ad.price_unit !== 'item' && <span className="text-xs text-gray-500 font-normal ml-1">/{ad.price_unit}</span>}
+                                    <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
+                                        <span className="text-lg font-bold text-slate-900 flex items-center">
+                                            {ad.price ? `₹${ad.price}` : 'Contact'}
+                                            {ad.price_unit && ad.price_unit !== 'item' && <span className="text-xs text-slate-500 font-normal ml-1">/{ad.price_unit}</span>}
                                         </span>
-                                        <span className="text-xs text-gray-400">
+                                        <span className="text-xs text-slate-400 flex items-center gap-1">
+                                            <Calendar size={12} />
                                             {new Date(ad.created_at).toLocaleDateString()}
                                         </span>
                                     </div>
                                 </div>
-                            </div>
+                            </GlassCard>
                         </Link>
                     ))}
                 </div>
 
                 {filteredAds.length === 0 && (
                     <div className="text-center py-20">
-                        <div className="relative w-16 h-16 mb-4 mx-auto">
-                            <Image src="/state-empty.svg" alt="Empty" fill className="object-contain" />
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                            <Tag size={32} />
                         </div>
-                        <h3 className="text-xl font-bold text-gray-900 mb-2">No ads found</h3>
-                        <p className="text-gray-500">Be the first to post an ad in this category!</p>
+                        <h3 className="text-xl font-bold text-slate-900 mb-2">No ads found</h3>
+                        <p className="text-slate-500">Be the first to post an ad in this category!</p>
                         <Link href="/classified/new" className="inline-block mt-6 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium">
                             Post an Ad
                         </Link>
                     </div>
                 )}
-            </div>
+            </main>
         </div>
     );
 }

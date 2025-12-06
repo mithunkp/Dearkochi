@@ -1,3 +1,5 @@
+import { Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle } from 'lucide-react';
+
 export interface WeatherData {
     current: {
         temperature: number;
@@ -99,6 +101,7 @@ export function getWeatherDescription(code: number): string {
         73: 'Moderate snow',
         75: 'Heavy snow',
         77: 'Snow grains',
+        102: 'Slight rain showers',
         80: 'Slight rain showers',
         81: 'Moderate rain showers',
         82: 'Violent rain showers',
@@ -109,14 +112,15 @@ export function getWeatherDescription(code: number): string {
     return codes[code] || 'Unknown';
 }
 
-export function getWeatherIcon(code: number, isDay: boolean = true): string {
-    // Map codes to new SVG icons
-    if (code <= 1) return '/weather-clear.svg';
-    if (code <= 3) return '/weather-cloudy.svg';
-    if (code <= 48) return '/weather-fog.svg';
-    if (code <= 67 || (code >= 80 && code <= 82)) return '/weather-rain.svg';
-    if (code <= 77 || code === 85 || code === 86) return '/weather-snow.svg';
-    if (code >= 95) return '/weather-storm.svg';
+export function getWeatherIcon(code: number, isDay: boolean = true) {
+    // Map codes to Lucide icons
+    if (code <= 1) return Sun;
+    if (code <= 3) return Cloud;
+    if (code <= 48) return CloudFog;
+    if (code <= 55) return CloudDrizzle;
+    if (code <= 67 || (code >= 80 && code <= 82)) return CloudRain;
+    if (code <= 77 || code === 85 || code === 86) return CloudSnow;
+    if (code >= 95) return CloudLightning;
 
-    return '/weather-clear.svg'; // Default
+    return Sun; // Default
 }
