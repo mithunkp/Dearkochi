@@ -3,6 +3,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import CurrentWeatherCard from './CurrentWeatherCard';
 
+export { metadata } from './metadata';
+
 export default async function WeatherPage() {
     const weather = await getWeather();
 

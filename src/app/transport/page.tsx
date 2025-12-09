@@ -9,6 +9,8 @@ import TransportModes from './TransportModes';
 import { Header } from '@/components/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
 
+export { metadata } from './metadata';
+
 // Types
 type TrafficAlert = {
     id: number;
@@ -180,7 +182,7 @@ export default async function TransportPage() {
                                     <div key={i} className="bg-white/50 rounded-2xl p-4 text-center border border-white/40">
                                         <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{fuel.type}</div>
                                         <div className="text-xl font-black text-slate-800">{fuel.price}</div>
-                                        <div className={`text-[10px] font-bold mt-1 ${fuel.trend === 'up' ? 'text-red-500' : 'text-green-500'} flex items-center justify-center gap-1`}>
+                                        <div className={`text - [10px] font - bold mt - 1 ${fuel.trend === 'up' ? 'text-red-500' : 'text-green-500'} flex items - center justify - center gap - 1`}>
                                             {fuel.trend === 'up' ? <TrendingUp size={12} /> : fuel.trend === 'down' ? <TrendingDown size={12} /> : <Minus size={12} />}
                                             {fuel.trend === 'up' ? 'Rising' : fuel.trend === 'down' ? 'Falling' : 'Stable'}
                                         </div>
@@ -204,16 +206,16 @@ export default async function TransportPage() {
                             <div className="space-y-4">
                                 {displayTraffic.map((alert) => (
                                     <div key={alert.id} className="relative pl-4 border-l-2 border-slate-200 pb-4 last:pb-0 last:border-0">
-                                        <div className={`absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white ${alert.severity === 'high' ? 'bg-red-500' : alert.severity === 'medium' ? 'bg-orange-500' : 'bg-green-500'
-                                            }`}></div>
+                                        <div className={`absolute - left - [5px] top - 1 w - 2.5 h - 2.5 rounded - full border - 2 border - white ${alert.severity === 'high' ? 'bg-red-500' : alert.severity === 'medium' ? 'bg-orange-500' : 'bg-green-500'
+                                            } `}></div>
 
                                         <div className="flex justify-between items-start">
                                             <h4 className="font-bold text-slate-800 text-sm">{alert.location}</h4>
                                             <span className="text-[10px] text-slate-400 font-medium">{alert.time}</span>
                                         </div>
 
-                                        <div className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide mt-1 mb-1 ${alert.severity === 'high' ? 'bg-red-50 text-red-600' : alert.severity === 'medium' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'
-                                            }`}>
+                                        <div className={`inline - block px - 2 py - 0.5 rounded text - [10px] font - bold uppercase tracking - wide mt - 1 mb - 1 ${alert.severity === 'high' ? 'bg-red-50 text-red-600' : alert.severity === 'medium' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'
+                                            } `}>
                                             {alert.status}
                                         </div>
 

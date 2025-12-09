@@ -5,8 +5,16 @@ export default function robots(): MetadataRoute.Robots {
         rules: {
             userAgent: '*',
             allow: '/',
-            disallow: ['/profile/', '/chats/'],
+            disallow: [
+                '/profile',
+                '/profile/*',
+                '/chats',
+                '/chats/*',
+                '/classified/my-ads',
+                '/search',
+                '/api/*',
+            ],
         },
-        sitemap: 'https://dearkochi.com/sitemap.xml', // Replace with actual domain
+        sitemap: 'https://dearkochi.com/sitemap.xml',
     };
 }
