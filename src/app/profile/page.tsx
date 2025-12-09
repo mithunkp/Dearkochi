@@ -24,7 +24,7 @@ type StoreType = {
 };
 
 export default function ProfilePage() {
-    const { user, loading: authLoading } = useAuth();
+    const { user, loading: authLoading, signOut } = useAuth();
     const [profile, setProfile] = useState<Profile | null>(null);
     const [stores, setStores] = useState<StoreType[]>([]);
     const [loading, setLoading] = useState(true);
@@ -149,6 +149,19 @@ export default function ProfilePage() {
                         <h1 className="text-3xl font-bold text-slate-800">Your Profile</h1>
                         <p className="text-sm text-slate-500 font-medium">Manage your account and listings</p>
                     </div>
+                </div>
+
+                <div className="absolute top-10 right-8">
+                    <button
+                        onClick={() => {
+                            if (confirm('Are you sure you want to sign out?')) {
+                                signOut();
+                            }
+                        }}
+                        className="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors"
+                    >
+                        Sign Out
+                    </button>
                 </div>
 
                 <div className="space-y-8">

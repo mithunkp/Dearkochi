@@ -12,7 +12,7 @@ import {
   Store,
   ArrowRight,
   Zap,
-  Activity
+  Calendar
 } from 'lucide-react';
 
 import { Header } from '@/components/Header';
@@ -40,7 +40,7 @@ export default function DearKochi() {
     { id: 'places', label: 'Must Visit', icon: MapPin, value: 'Top Spots', unit: '', color: 'text-orange-500', bg: 'bg-orange-100' },
     { id: 'transport', label: 'Transport', icon: Bus, value: 'Metro/Bus', unit: '', color: 'text-blue-500', bg: 'bg-blue-100' },
     { id: 'emergency', label: 'Emergency', icon: AlertTriangle, value: 'Help', unit: '', color: 'text-red-500', bg: 'bg-red-100' },
-    { id: 'social', label: 'Social', icon: Users, value: 'Connect', unit: '', color: 'text-purple-500', bg: 'bg-purple-100' },
+    { id: 'social', label: 'Social', icon: Users, value: 'Connections', unit: '', color: 'text-purple-500', bg: 'bg-purple-100' },
     { id: 'classified', label: 'Classifieds', icon: Tag, value: 'Buy/Sell', unit: '', color: 'text-teal-500', bg: 'bg-teal-100' },
     { id: 'stores', label: 'Stores', icon: Store, value: 'Shop', unit: '', color: 'text-indigo-500', bg: 'bg-indigo-100' },
   ];
@@ -109,17 +109,17 @@ export default function DearKochi() {
             </div>
           </GlassCard>
 
-          {/* Activity/News Insight */}
-          <GlassCard className="md:col-span-1 flex flex-col justify-between min-h-[160px]">
-            <div>
+          {/* Local Events Insight */}
+          <GlassCard className="md:col-span-1 flex flex-col justify-between min-h-[160px] cursor-pointer hover:shadow-lg transition-shadow">
+            <div onClick={() => router.push('/local-events')}>
               <h3 className="text-base font-medium opacity-70 mb-3 flex items-center gap-2">
-                <Activity size={18} /> Activity
+                <Calendar size={18} /> Local Events
               </h3>
               <div className="flex items-end gap-2">
-                <div className="text-3xl font-bold text-slate-800">Live</div>
+                <div className="text-3xl font-bold text-slate-800">Upcoming</div>
                 <div className="flex-1 h-10 bg-slate-100 rounded-md relative overflow-hidden">
                   <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400">
-                    No major alerts
+                    Click to explore
                   </div>
                 </div>
               </div>
