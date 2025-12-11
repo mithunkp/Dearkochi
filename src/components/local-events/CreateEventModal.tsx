@@ -8,10 +8,13 @@ import { X, Zap, Calendar, Lock, Globe, MapPin, Users, Clock } from 'lucide-reac
 import dynamic from 'next/dynamic';
 
 // Dynamic import for LocationPicker to avoid SSR issues with Leaflet
-const LocationPicker = dynamic(() => import('@/components/ui/LocationPicker'), {
-    loading: () => <div className="h-[300px] w-full bg-slate-100 rounded-xl animate-pulse flex items-center justify-center text-slate-400">Loading Map...</div>,
-    ssr: false
-});
+const LocationPicker = dynamic(
+    () => import('@/components/ui/LocationPicker').then((mod) => mod.default),
+    {
+        loading: () => <div className="h-[300px] w-full bg-slate-100 rounded-xl animate-pulse flex items-center justify-center text-slate-400">Loading Map...</div>,
+        ssr: false
+    }
+);
 
 interface CreateEventModalProps {
     isOpen: boolean;
@@ -37,11 +40,76 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
         longitude: null as number | null
     });
 
-    if (!isOpen) return null;
+    if (!isOpen) {
+        // Reset form when closing
+        if (formData.title || formData.description) {
+            setFormData({
+                title: '',
+                description: '',
+                location: '',
+                area: '',
+                maxParticipants: '',
+                isPrivate: false,
+                scheduledDate: '',
+                scheduledTime: '',
+                durationHours: '2',
+                latitude: null,
+                longitude: null
+            });
+            setEventType('live');
+        }
+        return null;
+    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
+        console.log('Form submitted', { formData, user });
+
+        if (!user) {
+            console.error('No user found');
+            alert('You must be logged in to create an event');
+            return;
+        }
+
+        // Check for nickname first
+        const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
+        if (!profile?.nickname) {
+            const nick = prompt('Please set a nickname before creating an event:');
+            if (!nick || !nick.trim()) {
+                alert('A nickname is required to create events');
+                return;
+            }
+            const { error: updateError } = await supabase.from('profiles').update({ nickname: nick.trim() }).eq('id', user.id);
+            if (updateError) {
+                alert('Failed to set nickname. Please try again.');
+                return;
+            }
+        }
+
+        // Validate required fields
+        const requiredFields = [
+            { field: 'title', label: 'Event Title' },
+            { field: 'description', label: 'Description' },
+            { field: 'location', label: 'Location' }
+        ];
+
+        const missingField = requiredFields.find(field => !formData[field.field as keyof typeof formData]?.toString().trim());
+        if (missingField) {
+            alert(`Please fill in the ${missingField.label} field`);
+            return;
+        }
+
+        // For live events, ensure location is set
+        if (eventType === 'live' && (!formData.latitude || !formData.longitude)) {
+            alert('Please select a location on the map for live events');
+            return;
+        }
+
+        // For scheduled events, ensure date and time are set
+        if (eventType === 'scheduled' && (!formData.scheduledDate || !formData.scheduledTime)) {
+            alert('Please select both date and time for scheduled events');
+            return;
+        }
 
         setLoading(true);
         try {
@@ -59,7 +127,7 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
                 endTime = new Date(startTime.getTime() + 3 * 60 * 60 * 1000);
             }
 
-            const { error } = await supabase.from('local_events').insert({
+            const { data: newEvent, error } = await supabase.from('local_events').insert({
                 creator_id: user.id,
                 title: formData.title,
                 description: formData.description,
@@ -73,15 +141,33 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
                 is_closed: false,
                 latitude: formData.latitude,
                 longitude: formData.longitude
-            });
+            }).select().single();
 
-            if (error) throw error;
+            if (error) {
+                console.error('Supabase error:', error);
+                throw error;
+            }
 
+            // Automatically join the creator to the event
+            if (newEvent) {
+                const { error: joinError } = await supabase.from('event_participants').insert({
+                    event_id: newEvent.id,
+                    user_id: user.id,
+                    status: 'joined'
+                });
+
+                if (joinError) {
+                    console.error('Error auto-joining creator:', joinError);
+                    // Don't throw here, event was created successfully
+                }
+            }
+
+            console.log('Event created successfully');
             onCreated();
             onClose();
         } catch (error) {
             console.error('Error creating event:', error);
-            alert('Failed to create event');
+            alert(`Failed to create event: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setLoading(false);
         }
@@ -175,22 +261,30 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
                         {/* Map Picker */}
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Pin Location on Map</label>
-                            <LocationPicker
-                                restrictToCurrentLocation={eventType === 'live'}
-                                onLocationSelect={(lat, lng, address) => {
-                                    setFormData(prev => ({
-                                        ...prev,
-                                        latitude: lat,
-                                        longitude: lng,
-                                        location: address ? address.split(',')[0] : prev.location // Use first part of address as venue name
-                                    }));
-                                }}
-                            />
+                            <div className="h-[300px] w-full bg-slate-100 rounded-xl overflow-hidden">
+                                <LocationPicker
+                                    restrictToCurrentLocation={eventType === 'live'}
+                                    onLocationSelect={(lat, lng, address) => {
+                                        console.log('Location selected:', { lat, lng, address });
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            latitude: lat,
+                                            longitude: lng,
+                                            location: address ? address.split(',')[0] : prev.location
+                                        }));
+                                    }}
+                                />
+                            </div>
                             <p className="text-xs text-slate-500 mt-1">
                                 {eventType === 'live'
                                     ? 'Live events must use your current location.'
                                     : 'Search or click on the map to set location.'}
                             </p>
+                            {formData.latitude && formData.longitude && (
+                                <p className="text-xs text-green-600 mt-1">
+                                    Location set: {formData.latitude?.toFixed(4)}, {formData.longitude?.toFixed(4)}
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -279,9 +373,16 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
                     <button
                         type="submit"
                         disabled={loading}
-                        className="w-full py-4 bg-[#5A4FCF] hover:bg-[#4a3fc1] text-white rounded-xl font-bold shadow-lg shadow-purple-200 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className={`w-full py-4 bg-[#5A4FCF] hover:bg-[#4a3fc1] text-white rounded-xl font-bold shadow-lg shadow-purple-200 transition-all ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
-                        {loading ? 'Creating...' : 'Create Event'}
+                        {loading ? (
+                            <div className="flex items-center justify-center gap-2">
+                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                Creating...
+                            </div>
+                        ) : (
+                            'Create Event'
+                        )}
                     </button>
 
                 </form>

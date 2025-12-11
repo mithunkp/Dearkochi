@@ -43,41 +43,131 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
     const [isCreator, setIsCreator] = useState(false);
     const [loading, setLoading] = useState(false);
     const [showParticipants, setShowParticipants] = useState(false);
+    const [isEventFull, setIsEventFull] = useState(false);
+    const [userNickname, setUserNickname] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // Compute access dynamically based on current state
+    const canViewChat = !event.is_private || hasJoined || isCreator;
+    const canSendMessages = canViewChat && (hasJoined || isCreator) && userNickname;
+    const spotsRemaining = event.max_participants ? event.max_participants - participants.length : null;
+
     useEffect(() => {
-        if (user) {
-            setIsCreator(user.id === event.creator_id);
-            checkParticipation();
-        }
-        fetchParticipants();
-        fetchMessages();
+        let isMounted = true;
+        let msgChannel: any = null;
+        let partChannel: any = null;
 
-        // Realtime subscriptions
-        const msgChannel = supabase
-            .channel(`event_messages:${event.id}`)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'event_messages', filter: `event_id=eq.${event.id}` }, (payload) => {
-                fetchMessageSender(payload.new as any);
-            })
-            .subscribe();
+        const init = async () => {
+            // Set creator status
+            const isEventCreator = user?.id === event.creator_id;
+            if (isMounted) {
+                setIsCreator(isEventCreator);
+            }
 
-        const partChannel = supabase
-            .channel(`event_participants:${event.id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants', filter: `event_id=eq.${event.id}` }, () => {
-                fetchParticipants();
-                if (user) checkParticipation();
-            })
-            .subscribe();
+            // Fetch user's nickname
+            if (user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('nickname')
+                    .eq('id', user.id)
+                    .single();
+
+                if (isMounted) {
+                    setUserNickname(profile?.nickname || null);
+                }
+            }
+
+            // Check participation status
+            let userHasJoined = false;
+            if (user) {
+                const { data } = await supabase
+                    .from('event_participants')
+                    .select('status')
+                    .eq('event_id', event.id)
+                    .eq('user_id', user.id)
+                    .single();
+
+                userHasJoined = data?.status === 'joined';
+                if (isMounted) {
+                    setHasJoined(userHasJoined);
+                }
+            } else if (isMounted) {
+                setHasJoined(false);
+                setIsCreator(false);
+            }
+
+            // Fetch participants and check if event is full
+            if (isMounted) {
+                await fetchParticipants();
+            }
+
+            // Fetch messages if user has access
+            const canViewChat = !event.is_private || userHasJoined || isEventCreator;
+            if (canViewChat && isMounted) {
+                await fetchMessages();
+            }
+
+            // Realtime subscriptions
+            if (isMounted) {
+                msgChannel = supabase
+                    .channel(`event_messages:${event.id}`)
+                    .on('postgres_changes',
+                        {
+                            event: 'INSERT',
+                            schema: 'public',
+                            table: 'event_messages',
+                            filter: `event_id=eq.${event.id}`
+                        },
+                        async (payload) => {
+                            if (!isMounted) return;
+                            // Re-check access before adding message
+                            const { data: participantData } = await supabase
+                                .from('event_participants')
+                                .select('status')
+                                .eq('event_id', event.id)
+                                .eq('user_id', user?.id || '')
+                                .single();
+
+                            const hasAccess = !event.is_private ||
+                                participantData?.status === 'joined' ||
+                                user?.id === event.creator_id;
+
+                            if (hasAccess) {
+                                fetchMessageSender(payload.new as any);
+                            }
+                        }
+                    )
+                    .subscribe();
+
+                partChannel = supabase
+                    .channel(`event_participants:${event.id}`)
+                    .on('postgres_changes',
+                        {
+                            event: '*',
+                            schema: 'public',
+                            table: 'event_participants',
+                            filter: `event_id=eq.${event.id}`
+                        },
+                        () => {
+                            if (!isMounted) return;
+                            fetchParticipants();
+                            if (user) {
+                                checkParticipation();
+                            }
+                        }
+                    )
+                    .subscribe();
+            }
+        };
+
+        init();
 
         return () => {
-            supabase.removeChannel(msgChannel);
-            supabase.removeChannel(partChannel);
+            isMounted = false;
+            if (msgChannel) supabase.removeChannel(msgChannel);
+            if (partChannel) supabase.removeChannel(partChannel);
         };
     }, [event.id, user]);
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages, showParticipants]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -91,23 +181,105 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
     };
 
     const fetchMessages = async () => {
-        const { data, error } = await supabase
-            .from('event_messages')
-            .select('*, profiles(nickname, email)')
-            .eq('event_id', event.id)
-            .order('created_at', { ascending: true });
+        if (!event?.id) {
+            console.warn('No event ID provided');
+            return;
+        }
 
-        if (!error && data) setMessages(data as any);
+        try {
+            const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+            if (authError || !authUser) {
+                console.warn('User not authenticated:', authError?.message || 'No user found');
+                return;
+            }
+
+            // Fetch messages with embedded profiles
+            const { data: messagesData, error } = await supabase
+                .from('event_messages')
+                .select(`
+                    id,
+                    content,
+                    created_at,
+                    user_id,
+                    profiles (
+                        nickname,
+                        email
+                    )
+                `)
+                .eq('event_id', event.id)
+                .order('created_at', { ascending: true });
+
+            if (error) {
+                console.error('Supabase query error:', error);
+                return;
+            }
+
+            if (!messagesData) {
+                setMessages([]);
+                return;
+            }
+
+            // Transform data to match Message type
+            const formattedMessages: Message[] = messagesData.map((msg: any) => ({
+                id: msg.id,
+                content: msg.content,
+                created_at: msg.created_at,
+                user_id: msg.user_id,
+                profiles: {
+                    nickname: msg.profiles?.nickname || null,
+                    email: msg.profiles?.email || ''
+                }
+            }));
+
+            setMessages(formattedMessages);
+        } catch (error) {
+            console.error('Error in fetchMessages:', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                eventId: event?.id
+            });
+        }
     };
 
     const fetchParticipants = async () => {
-        const { data, error } = await supabase
+        const { data: participantsData, error } = await supabase
             .from('event_participants')
-            .select('user_id, status, profiles(nickname, email)')
+            .select(`
+                user_id,
+                status,
+                profiles (
+                    nickname,
+                    email
+                )
+            `)
             .eq('event_id', event.id)
             .eq('status', 'joined');
 
-        if (!error && data) setParticipants(data as any);
+        if (error) {
+            console.error('Error fetching participants:', error);
+            return;
+        }
+
+        if (!participantsData) {
+            setParticipants([]);
+            return;
+        }
+
+        // Transform data to match Participant type
+        const formattedParticipants: Participant[] = participantsData.map((p: any) => ({
+            user_id: p.user_id,
+            status: p.status,
+            profiles: {
+                nickname: p.profiles?.nickname || null,
+                email: p.profiles?.email || ''
+            }
+        }));
+
+        setParticipants(formattedParticipants);
+
+        // Check if event is full
+        if (event.max_participants) {
+            setIsEventFull(formattedParticipants.length >= event.max_participants);
+        }
     };
 
     const checkParticipation = async () => {
@@ -125,12 +297,23 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
     const handleJoin = async () => {
         if (!user) return;
 
+        // Check if event is full
+        if (isEventFull && !isCreator) {
+            alert('This event is full. No more participants can join.');
+            return;
+        }
+
         // Check for nickname
         const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
         if (!profile?.nickname) {
             const nick = prompt('Please set a nickname to join events:');
-            if (!nick) return;
-            await supabase.from('profiles').update({ nickname: nick }).eq('id', user.id);
+            if (!nick || !nick.trim()) return;
+            const { error: updateError } = await supabase.from('profiles').update({ nickname: nick.trim() }).eq('id', user.id);
+            if (updateError) {
+                alert('Failed to set nickname. Please try again.');
+                return;
+            }
+            setUserNickname(nick.trim());
         }
 
         setLoading(true);
@@ -159,17 +342,32 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
         }
     };
 
+    const [isSending, setIsSending] = useState(false);
+
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newMessage.trim() || !user) return;
+        if (!newMessage.trim() || !user || isSending) return;
 
-        const { error } = await supabase.from('event_messages').insert({
-            event_id: event.id,
-            user_id: user.id,
-            content: newMessage.trim()
-        });
+        setIsSending(true);
+        try {
+            const { error } = await supabase.from('event_messages').insert({
+                event_id: event.id,
+                user_id: user.id,
+                content: newMessage.trim()
+            });
 
-        if (!error) setNewMessage('');
+            if (error) throw error;
+            setNewMessage('');
+            // Scroll to bottom after sending message
+            setTimeout(() => {
+                scrollToBottom();
+            }, 100);
+        } catch (error) {
+            console.error('Error sending message:', error);
+            alert('Failed to send message. Please try again.');
+        } finally {
+            setIsSending(false);
+        }
     };
 
     const handleCloseEvent = async () => {
@@ -188,8 +386,6 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
     };
 
     if (!isOpen) return null;
-
-    const canViewChat = !event.is_private || hasJoined || isCreator;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -237,7 +433,11 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                             <Users size={20} className="text-slate-400" />
                             <div>
                                 <div className="font-medium text-sm">Participants</div>
-                                <div className="text-sm opacity-80">{participants.length} {event.max_participants ? `/ ${event.max_participants}` : ''} joined</div>
+                                <div className={`text-sm ${isEventFull ? 'text-red-600 font-semibold' : 'opacity-80'}`}>
+                                    {participants.length} {event.max_participants ? `/ ${event.max_participants}` : ''} joined
+                                    {isEventFull && ' - FULL'}
+                                    {!isEventFull && spotsRemaining && spotsRemaining <= 3 && spotsRemaining > 0 && ` (${spotsRemaining} spots left)`}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -245,6 +445,10 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                     <div className="mt-auto">
                         {event.is_closed ? (
                             <div className="w-full py-3 bg-slate-200 text-slate-500 rounded-xl font-bold text-center">Event Closed</div>
+                        ) : isEventFull && !hasJoined && !isCreator ? (
+                            <div className="w-full py-3 bg-red-50 text-red-600 rounded-xl font-bold text-center border-2 border-red-200">
+                                Event Full ({participants.length}/{event.max_participants})
+                            </div>
                         ) : hasJoined ? (
                             <button onClick={handleLeave} className="w-full py-3 border-2 border-red-100 text-red-500 hover:bg-red-50 rounded-xl font-bold transition-colors">
                                 Leave Event
@@ -252,10 +456,13 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                         ) : (
                             <button
                                 onClick={handleJoin}
-                                disabled={loading}
-                                className="w-full py-3 bg-[#5A4FCF] hover:bg-[#4a3fc1] text-white rounded-xl font-bold shadow-lg shadow-purple-200 transition-all"
+                                disabled={loading || isEventFull}
+                                className={`w-full py-3 rounded-xl font-bold shadow-lg transition-all ${loading || isEventFull
+                                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                    : 'bg-[#5A4FCF] hover:bg-[#4a3fc1] text-white shadow-purple-200'
+                                    }`}
                             >
-                                Join Event
+                                {loading ? 'Joining...' : 'Join Event'}
                             </button>
                         )}
                     </div>
@@ -310,18 +517,37 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                                     </div>
 
                                     <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-100 bg-white">
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                placeholder="Type a message..."
-                                                className="flex-1 px-4 py-3 bg-slate-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20"
-                                                value={newMessage}
-                                                onChange={e => setNewMessage(e.target.value)}
-                                            />
-                                            <button type="submit" className="p-3 bg-[#5A4FCF] text-white rounded-xl hover:bg-[#4a3fc1] transition-colors">
-                                                <Send size={20} />
-                                            </button>
-                                        </div>
+                                        {!canSendMessages ? (
+                                            <div className="text-center py-3">
+                                                <p className="text-sm text-slate-500">
+                                                    {!user ? 'Sign in to chat' :
+                                                        !userNickname ? 'Set a nickname to chat' :
+                                                            !hasJoined && !isCreator ? 'Join the event to chat' : 'Loading...'}
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Type a message..."
+                                                    className="flex-1 px-4 py-3 bg-slate-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                                                    value={newMessage}
+                                                    onChange={e => setNewMessage(e.target.value)}
+                                                    disabled={!canSendMessages}
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    className={`p-3 ${isSending || !canSendMessages ? 'bg-slate-400' : 'bg-[#5A4FCF] hover:bg-[#4a3fc1]'} text-white rounded-xl transition-colors`}
+                                                    disabled={isSending || !canSendMessages}
+                                                >
+                                                    {isSending ? (
+                                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                    ) : (
+                                                        <Send size={20} />
+                                                    )}
+                                                </button>
+                                            </div>
+                                        )}
                                     </form>
                                 </>
                             ) : (

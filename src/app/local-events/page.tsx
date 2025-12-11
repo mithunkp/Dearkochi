@@ -35,6 +35,12 @@ export default function LocalEventsPage() {
     const [filter, setFilter] = useState<'all' | 'live' | 'scheduled'>('all');
 
     useEffect(() => {
+        // Check authentication
+        if (!user) {
+            router.push('/auth/sign-in?redirect=/local-events');
+            return;
+        }
+
         fetchEvents();
 
         const channel = supabase
@@ -42,12 +48,15 @@ export default function LocalEventsPage() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'local_events' }, () => {
                 fetchEvents();
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, () => {
+                fetchEvents(); // Refresh when participants change
+            })
             .subscribe();
 
         return () => {
             supabase.removeChannel(channel);
         };
-    }, []);
+    }, [user, router]);
 
     const fetchEvents = async () => {
         const now = new Date().toISOString();
@@ -59,9 +68,26 @@ export default function LocalEventsPage() {
 
         if (error) {
             console.error('Error fetching events:', error);
-        } else {
-            setEvents(data as LocalEvent[]);
+            return;
         }
+
+        // Fetch participant counts for each event
+        const eventsWithCounts = await Promise.all(
+            (data || []).map(async (event) => {
+                const { count } = await supabase
+                    .from('event_participants')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('event_id', event.id)
+                    .eq('status', 'joined');
+
+                return {
+                    ...event,
+                    participant_count: count || 0
+                };
+            })
+        );
+
+        setEvents(eventsWithCounts as LocalEvent[]);
     };
 
     const filteredEvents = events.filter(event => {
@@ -173,8 +199,13 @@ export default function LocalEventsPage() {
             {isCreateModalOpen && (
                 <CreateEventModal
                     isOpen={isCreateModalOpen}
-                    onClose={() => setIsCreateModalOpen(false)}
-                    onCreated={fetchEvents}
+                    onClose={() => {
+                        setIsCreateModalOpen(false);
+                    }}
+                    onCreated={() => {
+                        fetchEvents();
+                        setIsCreateModalOpen(false);
+                    }}
                 />
             )}
 
