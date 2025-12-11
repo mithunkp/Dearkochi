@@ -27,7 +27,7 @@ export type LocalEvent = {
 
 export default function LocalEventsPage() {
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, loading } = useAuth();
     const [events, setEvents] = useState<LocalEvent[]>([]);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<LocalEvent | null>(null);
@@ -36,12 +36,14 @@ export default function LocalEventsPage() {
 
     useEffect(() => {
         // Check authentication
-        if (!user) {
-            router.push('/auth/sign-in?redirect=/local-events');
+        if (!loading && !user) {
+            router.push('/login?redirect=/local-events');
             return;
         }
 
-        fetchEvents();
+        if (user) {
+            fetchEvents();
+        }
 
         const channel = supabase
             .channel('local_events_changes')
