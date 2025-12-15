@@ -1,15 +1,16 @@
 'use client';
 
 import { LocalEvent } from '@/app/local-events/page';
-import { MapPin, Clock, Users, Lock, Zap, AlertCircle } from 'lucide-react';
+import { MapPin, Clock, Users, Lock, Zap, AlertCircle, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface EventCardProps {
     event: LocalEvent;
     onClick: () => void;
+    onDelete?: () => void;
 }
 
-export function EventCard({ event, onClick }: EventCardProps) {
+export function EventCard({ event, onClick, onDelete }: EventCardProps) {
     const isLive = event.event_type === 'live';
     const timeLeft = formatDistanceToNow(new Date(event.end_time), { addSuffix: true });
     const participantCount = event.participant_count || 0;
@@ -30,7 +31,7 @@ export function EventCard({ event, onClick }: EventCardProps) {
                 </div>
             )}
 
-            <div className="flex justify-between items-start mb-4">
+            <div className="flex justify-between items-start mb-4 relative z-10">
                 <div className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${isLive
                     ? 'bg-red-100 text-red-600'
                     : 'bg-purple-100 text-purple-600'
@@ -38,11 +39,25 @@ export function EventCard({ event, onClick }: EventCardProps) {
                     {isLive ? <Zap size={12} /> : <Clock size={12} />}
                     {isLive ? 'LIVE' : 'Scheduled'}
                 </div>
-                {event.is_private && (
-                    <div className="text-slate-400">
-                        <Lock size={16} />
-                    </div>
-                )}
+                <div className="flex gap-2">
+                    {event.is_private && (
+                        <div className="text-slate-400 p-1">
+                            <Lock size={16} />
+                        </div>
+                    )}
+                    {onDelete && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete();
+                            }}
+                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete Event"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                    )}
+                </div>
             </div>
 
             <h3 className="text-xl font-bold text-slate-800 mb-2 line-clamp-2">{event.title}</h3>
@@ -59,8 +74,8 @@ export function EventCard({ event, onClick }: EventCardProps) {
                 </div>
 
                 <div className={`flex items-center gap-2 text-sm ${isFull ? 'text-red-600 font-semibold' :
-                        isLowAvailability ? 'text-orange-600 font-semibold' :
-                            'text-slate-500'
+                    isLowAvailability ? 'text-orange-600 font-semibold' :
+                        'text-slate-500'
                     }`}>
                     <Users size={16} className={isFull ? 'text-red-600' : isLowAvailability ? 'text-orange-600' : 'text-slate-400'} />
                     <span>

@@ -30,14 +30,14 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
         title: '',
         description: '',
         location: '',
-        area: '',
         maxParticipants: '',
         isPrivate: false,
         scheduledDate: '',
         scheduledTime: '',
         durationHours: '2',
         latitude: null as number | null,
-        longitude: null as number | null
+        longitude: null as number | null,
+        requiresApproval: false
     });
 
     if (!isOpen) {
@@ -47,14 +47,14 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
                 title: '',
                 description: '',
                 location: '',
-                area: '',
                 maxParticipants: '',
                 isPrivate: false,
                 scheduledDate: '',
                 scheduledTime: '',
                 durationHours: '2',
                 latitude: null,
-                longitude: null
+                longitude: null,
+                requiresApproval: false
             });
             setEventType('live');
         }
@@ -133,14 +133,15 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
                 description: formData.description,
                 event_type: eventType,
                 location: formData.location,
-                area: formData.area,
+                area: null,
                 start_time: startTime.toISOString(),
                 end_time: endTime.toISOString(),
                 max_participants: formData.maxParticipants ? parseInt(formData.maxParticipants) : null,
                 is_private: formData.isPrivate,
                 is_closed: false,
                 latitude: formData.latitude,
-                longitude: formData.longitude
+                longitude: formData.longitude,
+                requires_approval: formData.requiresApproval
             }).select().single();
 
             if (error) {
@@ -231,7 +232,7 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
                             />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4">
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Location Name</label>
                                 <div className="relative">
@@ -240,21 +241,17 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
                                         required
                                         type="text"
                                         placeholder="Venue/Spot"
-                                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all"
+                                        className={`w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all ${eventType === 'live' ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         value={formData.location}
                                         onChange={e => setFormData({ ...formData, location: e.target.value })}
+                                        readOnly={eventType === 'live'}
                                     />
                                 </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Area</label>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. Fort Kochi"
-                                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all"
-                                    value={formData.area}
-                                    onChange={e => setFormData({ ...formData, area: e.target.value })}
-                                />
+                                {eventType === 'live' && (
+                                    <p className="text-xs text-orange-500 mt-1">
+                                        Location is automatically detected for Live events.
+                                    </p>
+                                )}
                             </div>
                         </div>
 
@@ -349,6 +346,27 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
                                     onChange={e => setFormData({ ...formData, isPrivate: e.target.checked })}
                                 />
                                 <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                            </label>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className={`p-2 rounded-lg ${formData.requiresApproval ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-500'}`}>
+                                    {formData.requiresApproval ? <Lock size={20} /> : <Users size={20} />}
+                                </div>
+                                <div>
+                                    <div className="font-medium text-slate-800">Require Approval</div>
+                                    <div className="text-xs text-slate-500">Review requests before users join</div>
+                                </div>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={formData.requiresApproval}
+                                    onChange={e => setFormData({ ...formData, requiresApproval: e.target.checked })}
+                                />
+                                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
                             </label>
                         </div>
 

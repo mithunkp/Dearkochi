@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import { LocalEvent } from '@/app/local-events/page';
-import { X, Send, Users, MapPin, Clock, Lock, AlertCircle, MoreVertical, Trash2, StopCircle, Zap } from 'lucide-react';
+import { X, Send, Users, MapPin, Clock, Lock, AlertCircle, MoreVertical, Trash2, StopCircle, Zap, Check, UserPlus, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface EventDetailsModalProps {
@@ -27,7 +27,8 @@ type Message = {
 
 type Participant = {
     user_id: string;
-    status: 'joined' | 'removed';
+    status: 'joined' | 'removed' | 'pending' | 'rejected';
+    request_message?: string;
     profiles: {
         nickname: string | null;
         email: string;
@@ -45,6 +46,10 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
     const [showParticipants, setShowParticipants] = useState(false);
     const [isEventFull, setIsEventFull] = useState(false);
     const [userNickname, setUserNickname] = useState<string | null>(null);
+    const [joinMessage, setJoinMessage] = useState('');
+    const [showJoinModal, setShowJoinModal] = useState(false);
+    const [pendingRequests, setPendingRequests] = useState<Participant[]>([]);
+    const [myRequestStatus, setMyRequestStatus] = useState<'pending' | 'rejected' | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Compute access dynamically based on current state
@@ -90,6 +95,11 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 userHasJoined = data?.status === 'joined';
                 if (isMounted) {
                     setHasJoined(userHasJoined);
+                    if (data?.status === 'pending' || data?.status === 'rejected') {
+                        setMyRequestStatus(data.status);
+                    } else {
+                        setMyRequestStatus(null);
+                    }
                 }
             } else if (isMounted) {
                 setHasJoined(false);
@@ -99,6 +109,9 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
             // Fetch participants and check if event is full
             if (isMounted) {
                 await fetchParticipants();
+                if (isEventCreator) {
+                    await fetchPendingRequests();
+                }
             }
 
             // Fetch messages if user has access
@@ -151,6 +164,9 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                         () => {
                             if (!isMounted) return;
                             fetchParticipants();
+                            if (isCreator) {
+                                fetchPendingRequests();
+                            }
                             if (user) {
                                 checkParticipation();
                             }
@@ -282,6 +298,44 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
         }
     };
 
+    const fetchPendingRequests = async () => {
+        const { data: requestsData, error } = await supabase
+            .from('event_participants')
+            .select(`
+                user_id,
+                status,
+                request_message,
+                profiles (
+                    nickname,
+                    email
+                )
+            `)
+            .eq('event_id', event.id)
+            .eq('status', 'pending');
+
+        if (error) {
+            console.error('Error fetching requests:', error);
+            return;
+        }
+
+        if (!requestsData) {
+            setPendingRequests([]);
+            return;
+        }
+
+        const formattedRequests: Participant[] = requestsData.map((p: any) => ({
+            user_id: p.user_id,
+            status: p.status,
+            request_message: p.request_message,
+            profiles: {
+                nickname: p.profiles?.nickname || null,
+                email: p.profiles?.email || ''
+            }
+        }));
+
+        setPendingRequests(formattedRequests);
+    };
+
     const checkParticipation = async () => {
         if (!user) return;
         const { data } = await supabase
@@ -292,42 +346,107 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
             .single();
 
         setHasJoined(data?.status === 'joined');
+        if (data?.status === 'pending' || data?.status === 'rejected') {
+            setMyRequestStatus(data.status);
+        } else {
+            setMyRequestStatus(null);
+        }
     };
 
-    const handleJoin = async () => {
+    const handleJoinRequest = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
         if (!user) return;
 
-        // Check if event is full
-        if (isEventFull && !isCreator) {
-            alert('This event is full. No more participants can join.');
-            return;
-        }
-
-        // Check for nickname
-        const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
-        if (!profile?.nickname) {
-            const nick = prompt('Please set a nickname to join events:');
-            if (!nick || !nick.trim()) return;
-            const { error: updateError } = await supabase.from('profiles').update({ nickname: nick.trim() }).eq('id', user.id);
-            if (updateError) {
-                alert('Failed to set nickname. Please try again.');
-                return;
+        // Check nickname again
+        if (!userNickname) {
+            const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
+            if (!profile?.nickname) {
+                const nick = prompt('Please set a nickname to join events:');
+                if (!nick || !nick.trim()) return;
+                const { error: updateError } = await supabase.from('profiles').update({ nickname: nick.trim() }).eq('id', user.id);
+                if (updateError) {
+                    alert('Failed to set nickname.');
+                    return;
+                }
+                setUserNickname(nick.trim());
+            } else {
+                setUserNickname(profile.nickname);
             }
-            setUserNickname(nick.trim());
         }
 
         setLoading(true);
+
+        const status = event.requires_approval ? 'pending' : 'joined';
         const { error } = await supabase.from('event_participants').upsert({
             event_id: event.id,
             user_id: user.id,
-            status: 'joined'
+            status: status,
+            request_message: event.requires_approval ? joinMessage : null
         });
+
         setLoading(false);
+        setShowJoinModal(false);
+
         if (!error) {
-            setHasJoined(true);
-            onUpdate();
+            if (status === 'joined') {
+                setHasJoined(true);
+                onUpdate();
+            } else {
+                setMyRequestStatus('pending');
+                alert('Request sent! Waiting for approval.');
+            }
         } else {
-            alert('Failed to join. You might have been removed from this event.');
+            alert('Failed to join/request. Please try again.');
+        }
+    };
+
+    const handleJoinClick = () => {
+        if (!user) {
+            alert('Please sign in to join events');
+            return;
+        }
+
+        if (isEventFull && !isCreator) {
+            alert('This event is full.');
+            return;
+        }
+
+        if (event.requires_approval) {
+            setShowJoinModal(true);
+        } else {
+            handleJoinRequest();
+        }
+    };
+
+    const handleApprove = async (userId: string) => {
+        const { error } = await supabase
+            .from('event_participants')
+            .update({ status: 'joined' })
+            .eq('event_id', event.id)
+            .eq('user_id', userId);
+
+        if (error) {
+            alert('Failed to approve user');
+        } else {
+            // Refresh lists
+            fetchParticipants();
+            fetchPendingRequests();
+        }
+    };
+
+    const handleReject = async (userId: string) => {
+        if (!confirm('Reject this request?')) return;
+
+        const { error } = await supabase
+            .from('event_participants')
+            .update({ status: 'rejected' })
+            .eq('event_id', event.id)
+            .eq('user_id', userId);
+
+        if (error) {
+            alert('Failed to reject user');
+        } else {
+            fetchPendingRequests();
         }
     };
 
@@ -401,9 +520,9 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                         </div>
                         {isCreator && (
                             <div className="relative group">
-                                <button className="p-2 hover:bg-slate-200 rounded-full"><MoreVertical size={16} /></button>
+                                <button type="button" className="p-2 hover:bg-slate-200 rounded-full"><MoreVertical size={16} /></button>
                                 <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 hidden group-hover:block z-10">
-                                    <button onClick={handleCloseEvent} className="w-full text-left px-4 py-3 text-red-600 hover:bg-red-50 text-sm flex items-center gap-2">
+                                    <button type="button" onClick={handleCloseEvent} className="w-full text-left px-4 py-3 text-red-600 hover:bg-red-50 text-sm flex items-center gap-2">
                                         <StopCircle size={16} /> Close Event
                                     </button>
                                 </div>
@@ -450,19 +569,28 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                                 Event Full ({participants.length}/{event.max_participants})
                             </div>
                         ) : hasJoined ? (
-                            <button onClick={handleLeave} className="w-full py-3 border-2 border-red-100 text-red-500 hover:bg-red-50 rounded-xl font-bold transition-colors">
+                            <button type="button" onClick={handleLeave} className="w-full py-3 border-2 border-red-100 text-red-500 hover:bg-red-50 rounded-xl font-bold transition-colors">
                                 Leave Event
                             </button>
+                        ) : myRequestStatus === 'pending' ? (
+                            <div className="w-full py-3 bg-orange-50 text-orange-600 rounded-xl font-bold text-center border-2 border-orange-100">
+                                Request Pending
+                            </div>
+                        ) : myRequestStatus === 'rejected' ? (
+                            <div className="w-full py-3 bg-red-50 text-red-600 rounded-xl font-bold text-center border-2 border-red-100">
+                                Request Rejected
+                            </div>
                         ) : (
                             <button
-                                onClick={handleJoin}
+                                type="button"
+                                onClick={handleJoinClick}
                                 disabled={loading || isEventFull}
                                 className={`w-full py-3 rounded-xl font-bold shadow-lg transition-all ${loading || isEventFull
                                     ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
                                     : 'bg-[#5A4FCF] hover:bg-[#4a3fc1] text-white shadow-purple-200'
                                     }`}
                             >
-                                {loading ? 'Joining...' : 'Join Event'}
+                                {loading ? 'Processing...' : event.requires_approval ? 'Request to Join' : 'Join Event'}
                             </button>
                         )}
                     </div>
@@ -471,30 +599,105 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 {/* RIGHT SIDE: Chat / Participants */}
                 <div className="flex-1 flex flex-col bg-white relative">
                     <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                        <h3 className="font-bold text-slate-800">{showParticipants ? 'Participants' : 'Chat'}</h3>
-                        <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full"><X size={20} /></button>
+                        <div className="flex gap-4">
+                            <button
+                                type="button"
+                                onClick={() => setShowParticipants(false)}
+                                className={`font-bold ${!showParticipants ? 'text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                Chat
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowParticipants(true)}
+                                className={`font-bold ${showParticipants ? 'text-slate-800' : 'text-slate-400 hover:text-slate-600'} flex items-center gap-2`}
+                            >
+                                Participants
+                                {pendingRequests.length > 0 && isCreator && (
+                                    <span className="bg-orange-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                                        {pendingRequests.length}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+                        <button type="button" onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full"><X size={20} /></button>
                     </div>
 
                     {showParticipants ? (
-                        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                            {participants.map(p => (
-                                <div key={p.user_id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-xs">
-                                            {p.profiles.nickname?.[0]?.toUpperCase() || '?'}
-                                        </div>
-                                        <div>
-                                            <div className="font-medium text-sm text-slate-800">{p.profiles.nickname || 'Unknown'}</div>
-                                            {isCreator && <div className="text-xs text-slate-400">{p.profiles.email}</div>}
-                                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                            {/* Pending Requests Section (Creator Only) */}
+                            {isCreator && pendingRequests.length > 0 && (
+                                <div>
+                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Pending Requests</h4>
+                                    <div className="space-y-3">
+                                        {pendingRequests.map(p => (
+                                            <div key={p.user_id} className="bg-orange-50 p-3 rounded-xl border border-orange-100">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-full bg-orange-200 text-orange-700 flex items-center justify-center font-bold text-xs">
+                                                            {p.profiles.nickname?.[0]?.toUpperCase() || '?'}
+                                                        </div>
+                                                        <div>
+                                                            <div className="font-medium text-sm text-slate-800">{p.profiles.nickname || 'Unknown'}</div>
+                                                            <div className="text-xs text-slate-500">{p.profiles.email}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleReject(p.user_id)}
+                                                            className="p-2 bg-white text-red-500 rounded-lg shadow-sm hover:bg-red-50"
+                                                            title="Reject"
+                                                        >
+                                                            <X size={16} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleApprove(p.user_id)}
+                                                            className="p-2 bg-white text-green-600 rounded-lg shadow-sm hover:bg-green-50"
+                                                            title="Approve"
+                                                        >
+                                                            <Check size={16} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                {p.request_message && (
+                                                    <div className="text-sm text-slate-600 bg-white/50 p-2 rounded-lg italic">
+                                                        "{p.request_message}"
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
-                                    {isCreator && p.user_id !== user?.id && (
-                                        <button onClick={() => handleRemoveUser(p.user_id)} className="text-red-400 hover:text-red-600 p-2">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
                                 </div>
-                            ))}
+                            )}
+
+                            {/* Active Participants */}
+                            <div>
+                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                                    Joined ({participants.length})
+                                </h4>
+                                <div className="space-y-2">
+                                    {participants.map(p => (
+                                        <div key={p.user_id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-xs">
+                                                    {p.profiles.nickname?.[0]?.toUpperCase() || '?'}
+                                                </div>
+                                                <div>
+                                                    <div className="font-medium text-sm text-slate-800">{p.profiles.nickname || 'Unknown'}</div>
+                                                    {isCreator && <div className="text-xs text-slate-400">{p.profiles.email}</div>}
+                                                </div>
+                                            </div>
+                                            {isCreator && p.user_id !== user?.id && (
+                                                <button type="button" onClick={() => handleRemoveUser(p.user_id)} className="text-red-400 hover:text-red-600 p-2">
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     ) : (
                         <>
@@ -561,6 +764,42 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                     )}
                 </div>
             </div>
+
+            {/* Join Request Modal */}
+            {showJoinModal && (
+                <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-in">
+                        <h3 className="text-lg font-bold text-slate-800 mb-2">Request to Join</h3>
+                        <p className="text-sm text-slate-500 mb-4">This event requires approval. Add a message for the host.</p>
+                        <form onSubmit={handleJoinRequest}>
+                            <textarea
+                                className="w-full p-3 bg-slate-50 rounded-xl border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all text-sm mb-4 resize-none"
+                                rows={3}
+                                placeholder="Hi! I'd love to join..."
+                                value={joinMessage}
+                                onChange={e => setJoinMessage(e.target.value)}
+                                autoFocus
+                            />
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowJoinModal(false)}
+                                    className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-semibold rounded-xl hover:bg-slate-200 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="flex-1 py-2.5 bg-[#5A4FCF] text-white font-bold rounded-xl hover:bg-[#4a3fc1] transition-colors shadow-lg shadow-purple-200"
+                                >
+                                    {loading ? 'Sending...' : 'Send Request'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

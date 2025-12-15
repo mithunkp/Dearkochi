@@ -23,6 +23,7 @@ export type LocalEvent = {
     creator_id: string;
     area: string | null;
     participant_count?: number; // Calculated field
+    requires_approval: boolean;
 };
 
 export default function LocalEventsPage() {
@@ -32,7 +33,7 @@ export default function LocalEventsPage() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<LocalEvent | null>(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const [filter, setFilter] = useState<'all' | 'live' | 'scheduled'>('all');
+    const [filter, setFilter] = useState<'all' | 'live' | 'scheduled' | 'my-events'>('all');
 
     useEffect(() => {
         // Check authentication
@@ -92,8 +93,21 @@ export default function LocalEventsPage() {
         setEvents(eventsWithCounts as LocalEvent[]);
     };
 
+    const handleDeleteEvent = async (eventId: string) => {
+        if (confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
+            const { error } = await supabase.from('local_events').delete().eq('id', eventId);
+            if (error) {
+                console.error('Error deleting event:', error);
+                alert('Failed to delete event');
+            } else {
+                fetchEvents();
+            }
+        }
+    };
+
     const filteredEvents = events.filter(event => {
         if (filter === 'all') return true;
+        if (filter === 'my-events') return user && event.creator_id === user.id;
         return event.event_type === filter;
     });
 
@@ -102,12 +116,11 @@ export default function LocalEventsPage() {
             {/* SIDEBAR (Desktop only) */}
             <aside className="hidden md:flex flex-col text-white w-64 p-6 fixed h-full z-10 bg-gradient-to-b from-[#5A4FCF] to-[#4a3fc1] rounded-r-[32px] shadow-xl">
                 <div className="flex items-center gap-3 mb-8 cursor-pointer" onClick={() => router.push('/')}>
-                    <div className="w-12 h-12 rounded-full flex items-center justify-center bg-white/20 text-white font-bold text-lg">DK</div>
                     <div>
                         <div className="text-lg font-semibold">Dear Kochi</div>
                         <div className="text-xs opacity-80">Local Events</div>
                     </div>
-                </div>
+                </div >
 
                 <nav className="space-y-3">
                     <button
@@ -121,6 +134,12 @@ export default function LocalEventsPage() {
                         className={`flex items-center gap-3 w-full px-3 py-3 rounded-xl transition-colors ${filter === 'live' ? 'bg-white/20' : 'hover:bg-white/10'}`}
                     >
                         <Zap size={20} /> <span>Live Now</span>
+                    </button>
+                    <button
+                        onClick={() => setFilter('my-events')}
+                        className={`flex items-center gap-3 w-full px-3 py-3 rounded-xl transition-colors ${filter === 'my-events' ? 'bg-white/20' : 'hover:bg-white/10'}`}
+                    >
+                        <UserIcon size={20} /> <span>My Events</span>
                     </button>
                     <button
                         onClick={() => setIsCreateModalOpen(true)}
@@ -142,10 +161,10 @@ export default function LocalEventsPage() {
                         </div>
                     </div>
                 </div>
-            </aside>
+            </aside >
 
             {/* MOBILE TOP BAR */}
-            <header className="md:hidden w-full p-4 bg-[#5A4FCF] text-white flex items-center justify-between fixed top-0 z-20 shadow-md">
+            < header className="md:hidden w-full p-4 bg-[#5A4FCF] text-white flex items-center justify-between fixed top-0 z-20 shadow-md" >
                 <div className="flex items-center gap-2" onClick={() => router.push('/')}>
                     <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white/20 font-bold">DK</div>
                     <span className="font-semibold text-lg">Local Events</span>
@@ -153,30 +172,39 @@ export default function LocalEventsPage() {
                 <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-xl p-1">
                     {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
                 </button>
-            </header>
+            </header >
 
             {/* MOBILE MENU OVERLAY */}
-            {mobileMenuOpen && (
-                <div className="fixed inset-0 z-10 bg-[#5A4FCF] pt-20 px-6 md:hidden">
-                    <nav className="space-y-4 text-white">
-                        <button onClick={() => { setFilter('all'); setMobileMenuOpen(false); }} className="flex items-center gap-3 w-full py-3 text-lg border-b border-white/10">
-                            <Calendar size={24} /> Discover
-                        </button>
-                        <button onClick={() => { setFilter('live'); setMobileMenuOpen(false); }} className="flex items-center gap-3 w-full py-3 text-lg border-b border-white/10">
-                            <Zap size={24} /> Live Now
-                        </button>
-                        <button onClick={() => { setIsCreateModalOpen(true); setMobileMenuOpen(false); }} className="flex items-center gap-3 w-full py-3 text-lg border-b border-white/10">
-                            <Plus size={24} /> Create Event
-                        </button>
-                    </nav>
-                </div>
-            )}
+            {
+                mobileMenuOpen && (
+                    <div className="fixed inset-0 z-10 bg-[#5A4FCF] pt-20 px-6 md:hidden">
+                        <nav className="space-y-4 text-white">
+                            <button onClick={() => { setFilter('all'); setMobileMenuOpen(false); }} className="flex items-center gap-3 w-full py-3 text-lg border-b border-white/10">
+                                <Calendar size={24} /> Discover
+                            </button>
+                            <button onClick={() => { setFilter('live'); setMobileMenuOpen(false); }} className="flex items-center gap-3 w-full py-3 text-lg border-b border-white/10">
+                                <Zap size={24} /> Live Now
+                            </button>
+                            <button onClick={() => { setFilter('my-events'); setMobileMenuOpen(false); }} className="flex items-center gap-3 w-full py-3 text-lg border-b border-white/10">
+                                <UserIcon size={24} /> My Events
+                            </button>
+                            <button onClick={() => { setIsCreateModalOpen(true); setMobileMenuOpen(false); }} className="flex items-center gap-3 w-full py-3 text-lg border-b border-white/10">
+                                <Plus size={24} /> Create Event
+                            </button>
+                        </nav>
+                    </div>
+                )
+            }
 
             {/* MAIN CONTENT */}
             <main className="flex-1 overflow-y-auto md:ml-64 ml-0 p-6 pt-24 md:pt-6 w-full">
                 <div className="bg-white rounded-[32px] p-8 mb-8 shadow-sm border border-slate-100">
-                    <h1 className="text-3xl font-bold text-slate-800 mb-2">Discover Local Events</h1>
-                    <p className="text-slate-500">Explore what's happening in Kochi right now.</p>
+                    <h1 className="text-3xl font-bold text-slate-800 mb-2">
+                        {filter === 'my-events' ? 'My Events' : 'Discover Local Events'}
+                    </h1>
+                    <p className="text-slate-500">
+                        {filter === 'my-events' ? 'Manage events you have created.' : "Explore what's happening in Kochi right now."}
+                    </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
@@ -185,6 +213,7 @@ export default function LocalEventsPage() {
                             key={event.id}
                             event={event}
                             onClick={() => setSelectedEvent(event)}
+                            onDelete={filter === 'my-events' ? () => handleDeleteEvent(event.id) : undefined}
                         />
                     ))}
 
@@ -198,27 +227,31 @@ export default function LocalEventsPage() {
             </main>
 
             {/* MODALS */}
-            {isCreateModalOpen && (
-                <CreateEventModal
-                    isOpen={isCreateModalOpen}
-                    onClose={() => {
-                        setIsCreateModalOpen(false);
-                    }}
-                    onCreated={() => {
-                        fetchEvents();
-                        setIsCreateModalOpen(false);
-                    }}
-                />
-            )}
+            {
+                isCreateModalOpen && (
+                    <CreateEventModal
+                        isOpen={isCreateModalOpen}
+                        onClose={() => {
+                            setIsCreateModalOpen(false);
+                        }}
+                        onCreated={() => {
+                            fetchEvents();
+                            setIsCreateModalOpen(false);
+                        }}
+                    />
+                )
+            }
 
-            {selectedEvent && (
-                <EventDetailsModal
-                    event={selectedEvent}
-                    isOpen={!!selectedEvent}
-                    onClose={() => setSelectedEvent(null)}
-                    onUpdate={fetchEvents}
-                />
-            )}
-        </div>
+            {
+                selectedEvent && (
+                    <EventDetailsModal
+                        event={selectedEvent}
+                        isOpen={!!selectedEvent}
+                        onClose={() => setSelectedEvent(null)}
+                        onUpdate={fetchEvents}
+                    />
+                )
+            }
+        </div >
     );
 }
