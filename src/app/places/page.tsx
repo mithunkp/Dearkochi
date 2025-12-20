@@ -37,6 +37,8 @@ interface Attraction {
   entryFee?: string;
   timings?: string;
   highlights?: string[];
+  image_url?: string;
+  google_maps_url?: string;
 }
 
 export default function Places() {
@@ -46,8 +48,8 @@ export default function Places() {
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
 
-  // Static known places - these never change
-  const knownPlaces: Attraction[] = [
+  // Placeholder for static data, but we will try to fetch these from DB or use this as fallback
+  const staticKnownPlaces: Attraction[] = [
     {
       id: '1',
       name: "Fort Kochi",
@@ -116,44 +118,54 @@ export default function Places() {
     }
   ];
 
-  // Fetch user-submitted places (for hidden tab)
-  useEffect(() => {
-    if (activeTab === 'hidden') {
-      fetchUserPlaces();
-    }
-  }, [activeTab]);
+  const [dbKnownPlaces, setDbKnownPlaces] = useState<Attraction[]>([]);
 
-  const fetchUserPlaces = async () => {
+  // Fetch ALL places on mount (or tab change, but simpler on mount or both)
+  useEffect(() => {
+    fetchAllPlaces();
+  }, []);
+
+  const fetchAllPlaces = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('user_places')
         .select('*')
+        // Order by priority or date. 
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      // Map database fields (snake_case) to interface (camelCase)
       const mappedPlaces: Attraction[] = (data || []).map((place: any) => ({
         id: place.id,
         name: place.name,
         description: place.description,
         type: place.type,
-        // Default rating for user places or fetch if available
         rating: place.rating || 4.5,
         bestTime: place.best_time,
         entryFee: place.entry_fee,
         timings: place.timings,
-        highlights: place.highlights || []
-      }));
+        highlights: place.highlights || [],
+        image_url: place.image_url,
+        google_maps_url: place.google_maps_url,
+        is_known: place.is_known // We need to check this flag
+      })).filter((p: any) => p !== null);
 
-      setUserPlaces(mappedPlaces);
+      // Separate into Known and Hidden
+      const known = mappedPlaces.filter((p: any) => p.is_known === true);
+      const hidden = mappedPlaces.filter((p: any) => !p.is_known);
+
+      setDbKnownPlaces(known);
+      setUserPlaces(hidden);
     } catch (error) {
-      console.error('Error fetching user places:', error);
+      console.error('Error fetching places:', error);
     } finally {
       setLoading(false);
     }
   };
+
+  // If we have DB known places, use them. Otherwise fallback to static so we don't show empty.
+  const knownPlaces = dbKnownPlaces.length > 0 ? dbKnownPlaces : staticKnownPlaces;
 
   const categories = [
     { id: 'all', label: 'All Places', icon: LayoutGrid },
@@ -269,11 +281,19 @@ export default function Places() {
             return (
               <GlassCard key={place.id} className="p-0 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col h-full border-0">
                 {/* Place Header */}
-                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 h-40 flex items-center justify-center relative">
-                  <div className="relative w-20 h-20 bg-white/20 backdrop-blur-md rounded-full p-4 flex items-center justify-center text-white">
-                    <Icon size={40} strokeWidth={1.5} />
-                  </div>
-                  <div className="absolute top-4 right-4">
+                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 h-40 flex items-center justify-center relative overflow-hidden">
+                  {place.image_url ? (
+                    <img
+                      src={place.image_url}
+                      alt={place.name}
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="relative w-20 h-20 bg-white/20 backdrop-blur-md rounded-full p-4 flex items-center justify-center text-white">
+                      <Icon size={40} strokeWidth={1.5} />
+                    </div>
+                  )}
+                  <div className="absolute top-4 right-4 z-10">
                     <span className="bg-white/20 backdrop-blur-md text-white text-xs font-bold px-2.5 py-1 rounded-lg border border-white/20">
                       {place.type}
                     </span>
@@ -351,9 +371,20 @@ export default function Places() {
                     <button className="flex-1 bg-slate-100 text-slate-700 py-2.5 px-4 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2">
                       <Info size={14} /> Details
                     </button>
-                    <button className="flex-1 bg-blue-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-200">
-                      <Navigation size={14} /> Directions
-                    </button>
+                    {place.google_maps_url ? (
+                      <a
+                        href={place.google_maps_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 bg-blue-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-200 no-underline"
+                      >
+                        <Navigation size={14} /> Directions
+                      </a>
+                    ) : (
+                      <button disabled className="flex-1 bg-gray-300 text-white py-2.5 px-4 rounded-xl text-xs font-bold cursor-not-allowed flex items-center justify-center gap-2">
+                        <Navigation size={14} /> Directions
+                      </button>
+                    )}
                   </div>
                 </div>
               </GlassCard>
@@ -364,7 +395,7 @@ export default function Places() {
         {/* Add Place Form */}
         {showAddForm && (
           <AddPlaceForm
-            onPlaceAdded={fetchUserPlaces}
+            onPlaceAdded={fetchAllPlaces}
             onClose={() => setShowAddForm(false)}
           />
         )}

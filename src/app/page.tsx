@@ -81,10 +81,10 @@ export default function DearKochi() {
           </div>
 
           {/* Insights Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
             {/* Weather Insight */}
-            <GlassCard className="md:col-span-1 flex flex-col justify-between min-h-[160px] cursor-pointer hover:shadow-lg transition-shadow" >
+            <GlassCard className="md:col-span-full flex flex-col justify-between cursor-pointer hover:shadow-lg transition-shadow" >
               <div onClick={() => router.push('/weather')}>
                 <h3 className="text-base font-medium opacity-70 mb-3 flex items-center gap-2">
                   <CloudSun size={18} /> Weather
@@ -112,8 +112,25 @@ export default function DearKochi() {
               </div>
             </GlassCard>
 
+            {/* Date Planner Insight */}
+            <GlassCard className="md:col-span-1 flex flex-col justify-between cursor-pointer hover:shadow-lg transition-shadow">
+              <div onClick={() => router.push('/date-planner')}>
+                <h3 className="text-base font-medium opacity-70 mb-3 flex items-center gap-2">
+                  <Heart size={18} /> Date Planner
+                </h3>
+                <div className="flex items-end gap-2">
+                  <div className="text-3xl font-bold text-slate-800">Journey</div>
+                  <div className="flex-1 h-10 bg-pink-50 rounded-md relative overflow-hidden">
+                    <div className="absolute inset-0 flex items-center justify-center text-xs text-pink-500 font-medium">
+                      Plan Now
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </GlassCard>
+
             {/* Local Events Insight */}
-            <GlassCard className="md:col-span-1 flex flex-col justify-between min-h-[160px] cursor-pointer hover:shadow-lg transition-shadow">
+            <GlassCard className="md:col-span-1 flex flex-col justify-between cursor-pointer hover:shadow-lg transition-shadow">
               <div onClick={() => router.push('/local-events')}>
                 <h3 className="text-base font-medium opacity-70 mb-3 flex items-center gap-2">
                   <Calendar size={18} /> Local Events
@@ -130,7 +147,7 @@ export default function DearKochi() {
             </GlassCard>
 
             {/* User/Profile Insight */}
-            <GlassCard className="md:col-span-1 flex flex-col justify-between min-h-[160px]">
+            <GlassCard className="md:col-span-1 flex flex-col justify-between">
               <div>
                 <h3 className="text-base font-medium opacity-70 mb-3 flex items-center gap-2">
                   <Zap size={18} /> Status
@@ -149,22 +166,9 @@ export default function DearKochi() {
               )}
             </GlassCard>
 
-            {/* Date Planner Insight */}
-            <GlassCard className="md:col-span-1 flex flex-col justify-between min-h-[160px] cursor-pointer hover:shadow-lg transition-shadow">
-              <div onClick={() => router.push('/date-planner')}>
-                <h3 className="text-base font-medium opacity-70 mb-3 flex items-center gap-2">
-                  <Heart size={18} /> Date Planner
-                </h3>
-                <div className="flex items-end gap-2">
-                  <div className="text-3xl font-bold text-slate-800">Journey</div>
-                  <div className="flex-1 h-10 bg-pink-50 rounded-md relative overflow-hidden">
-                    <div className="absolute inset-0 flex items-center justify-center text-xs text-pink-500 font-medium">
-                      Plan Now
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </GlassCard>
+
+
+
 
           </div>
         </main>

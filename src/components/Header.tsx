@@ -12,11 +12,7 @@ export function Header() {
                 <div className="font-bold text-xl text-slate-800">Dear Kochi</div>
             </Link>
 
-            <nav className="hidden md:flex gap-2.5">
-                <Link href="/date-planner" className="px-5 py-2.5 rounded-full border-none text-sm cursor-pointer transition-all duration-200 bg-transparent text-slate-600 hover:bg-black/5 font-medium no-underline">
-                    Date Planner
-                </Link>
-            </nav>
+
 
             <div className="flex items-center gap-3">
                 <button className="w-10 h-10 rounded-full border border-slate-300 bg-white/60 backdrop-blur-sm flex items-center justify-center cursor-pointer text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">

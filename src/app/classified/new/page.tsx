@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import ImageUpload from '@/components/ImageUpload';
 
 type Category = {
     id: number;
@@ -169,28 +170,12 @@ export default function NewAdPage() {
 
                 <div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Image URL</label>
-                        <input
-                            type="url"
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Ad Image</label>
+                        <ImageUpload
                             value={formData.image_url}
-                            onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="https://example.com/image.jpg"
+                            onChange={(url) => setFormData({ ...formData, image_url: url })}
                         />
-                        <p className="text-xs text-gray-500 mt-1">Paste a direct link to an image.</p>
-                        {formData.image_url && (
-                            <div className="mt-3 border rounded-lg overflow-hidden">
-                                <img
-                                    src={formData.image_url}
-                                    alt="Preview"
-                                    className="w-full h-48 object-cover"
-                                    onError={(e) => {
-                                        e.currentTarget.src = '';
-                                        e.currentTarget.style.display = 'none';
-                                    }}
-                                />
-                            </div>
-                        )}
+                        <p className="text-xs text-gray-500 mt-2">Upload a photo of your item (optional)</p>
                     </div>        </div>
 
                 <div className="flex justify-end gap-3 pt-4">

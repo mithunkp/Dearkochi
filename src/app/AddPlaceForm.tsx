@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Image from 'next/image';
+import ImageUpload from '@/components/ImageUpload';
 
 interface AddPlaceFormProps {
   onPlaceAdded: () => void;
@@ -19,6 +20,8 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
     bestTime: '',
     entryFee: '',
     timings: '',
+    image_url: '',
+    google_maps_url: '',
     highlights: ''
   });
   const [loading, setLoading] = useState(false);
@@ -71,7 +74,9 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
             best_time: formData.bestTime,
             entry_fee: formData.entryFee,
             timings: formData.timings,
-            highlights: formData.highlights.split(',').map(h => h.trim()).filter(h => h)
+            highlights: formData.highlights.split(',').map(h => h.trim()).filter(h => h),
+            image_url: formData.image_url,
+            google_maps_url: formData.google_maps_url
           }
         ]);
 
@@ -126,6 +131,32 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 placeholder="Tell us about this place... Why is it special?"
               />
+            </div>
+
+
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Place Photo (Optional)</label>
+              <ImageUpload
+                value={formData.image_url}
+                onChange={(url) => setFormData(prev => ({ ...prev, image_url: url }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Google Maps Link</label>
+                <input
+                  type="text"
+                  value={formData.google_maps_url}
+                  onChange={(e) => setFormData({ ...formData, google_maps_url: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://maps.app.goo.gl/..."
+                />
+              </div>
+              <div className="flex items-end">
+                <p className="text-xs text-gray-500 mb-3">Paste the 'Share' link from Google Maps here.</p>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -204,10 +235,10 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
             </div>
 
             <div className="bg-gray-50 border border-gray-100 rounded-lg p-3">
-              <p className="text-gray-700 text-sm flex items-center gap-2">
+              <div className="text-gray-700 text-sm flex items-center gap-2">
                 <div className="relative w-4 h-4"><Image src="/cat-secret.svg" alt="Secret" fill className="object-contain" /></div>
                 You are sharing a local secret! This will help others discover hidden gems in Kochi.
-              </p>
+              </div>
             </div>
 
             <div className="flex space-x-3 pt-4">
@@ -228,7 +259,7 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
             </div>
           </form>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }
