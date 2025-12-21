@@ -26,7 +26,11 @@ export default function ImageUpload({ value, onChange, className = '' }: ImageUp
         setLoading(true);
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('upload_preset', '444c518bc9eacd3d052625d19b5b92'); // Provided by user
+        // Using custom unsigned upload preset 'dearkochi_unsigned'
+        // This preset must be created in Cloudinary dashboard:
+        // Settings → Upload → Upload presets → Add upload preset
+        // Name: dearkochi_unsigned, Signing Mode: Unsigned
+        formData.append('upload_preset', 'dearkochi_unsigned');
 
         try {
             // Cloud name 'mithu' inferred from existing codebase
@@ -35,16 +39,40 @@ export default function ImageUpload({ value, onChange, className = '' }: ImageUp
                 body: formData,
             });
 
+            // Log response status first
+            console.log('Response status:', response.status);
+            console.log('Response ok:', response.ok);
+
+            // Check if response is OK (2xx status)
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('HTTP Error Response:', errorText);
+
+                try {
+                    const errorData = JSON.parse(errorText);
+                    const errorMsg = errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`;
+                    alert(`Upload failed: ${errorMsg}`);
+                } catch {
+                    alert(`Upload failed: HTTP ${response.status} - ${response.statusText || 'Unknown error'}`);
+                }
+                return;
+            }
+
             const data = await response.json();
+
+            // Enhanced success logging
+            console.log('Cloudinary response:', data);
+
             if (data.secure_url) {
                 onChange(data.secure_url);
+                console.log('Upload successful! URL:', data.secure_url);
             } else {
-                console.error('Upload failed:', data);
-                alert('Upload failed: ' + (data.error?.message || 'Unknown error. Check cloud name and preset.'));
+                console.error('Upload failed - No secure_url in response:', data);
+                alert('Upload failed: No image URL received from Cloudinary. Please check your upload preset configuration.');
             }
         } catch (error) {
             console.error('Error uploading image:', error);
-            alert('Error uploading image. Please check your internet connection.');
+            alert('Error uploading image. Please check your internet connection and try again.');
         } finally {
             setLoading(false);
         }
