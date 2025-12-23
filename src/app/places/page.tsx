@@ -21,7 +21,9 @@ import {
   Building2,
   ShoppingBag,
   TreeDeciduous,
-  LayoutGrid
+  LayoutGrid,
+  X,
+  Calendar
 } from 'lucide-react';
 
 import { Header } from '@/components/Header';
@@ -39,6 +41,7 @@ interface Attraction {
   highlights?: string[];
   image_url?: string;
   google_maps_url?: string;
+  is_known?: boolean;
 }
 
 export default function Places() {
@@ -47,6 +50,7 @@ export default function Places() {
   const [userPlaces, setUserPlaces] = useState<Attraction[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedPlace, setSelectedPlace] = useState<Attraction | null>(null);
 
   // Placeholder for static data, but we will try to fetch these from DB or use this as fallback
   const staticKnownPlaces: Attraction[] = [
@@ -142,8 +146,8 @@ export default function Places() {
         description: place.description,
         type: place.type,
         rating: place.rating || 4.5,
-        bestTime: place.best_time,
-        entryFee: place.entry_fee,
+        bestTime: place.best_time_to_visit || place.best_time, // Handling potential column name differences
+        entryFee: place.ticket_price || place.entry_fee,
         timings: place.timings,
         highlights: place.highlights || [],
         image_url: place.image_url,
@@ -161,6 +165,16 @@ export default function Places() {
       console.error('Error fetching places:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePlaceClick = async (place: Attraction) => {
+    setSelectedPlace(place);
+    // Increment visit count (fire and forget)
+    try {
+      await supabase.rpc('increment_place_visit', { place_id: parseInt(place.id) });
+    } catch (err) {
+      console.error('Failed to track view', err);
     }
   };
 
@@ -320,34 +334,11 @@ export default function Places() {
                     </div>
                   )}
 
-                  <p className="text-slate-600 text-sm leading-relaxed mb-6 flex-grow">{place.description}</p>
+                  <p className="text-slate-600 text-sm leading-relaxed mb-6 flex-grow line-clamp-3">{place.description}</p>
 
-                  {/* Details */}
-                  <div className="space-y-2 mb-6 bg-slate-50/50 rounded-xl p-3 border border-slate-100">
-                    {place.bestTime && (
-                      <div className="flex items-center text-xs text-slate-600 font-medium">
-                        <Clock size={14} className="mr-2 text-slate-400" />
-                        <span>Best time: {place.bestTime}</span>
-                      </div>
-                    )}
-                    {place.entryFee && (
-                      <div className="flex items-center text-xs text-slate-600 font-medium">
-                        <DollarSign size={14} className="mr-2 text-slate-400" />
-                        <span>Entry: {place.entryFee}</span>
-                      </div>
-                    )}
-                    {place.timings && (
-                      <div className="flex items-center text-xs text-slate-600 font-medium">
-                        <Clock size={14} className="mr-2 text-slate-400" />
-                        <span>Timings: {place.timings}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Highlights */}
+                  {/* Highlights (Preview) */}
                   {place.highlights && place.highlights.length > 0 && (
                     <div className="mb-6">
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Highlights</h4>
                       <div className="flex flex-wrap gap-1.5">
                         {place.highlights.slice(0, 3).map((highlight, idx) => (
                           <span
@@ -357,18 +348,16 @@ export default function Places() {
                             {highlight}
                           </span>
                         ))}
-                        {place.highlights.length > 3 && (
-                          <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-1 rounded-md">
-                            +{place.highlights.length - 3}
-                          </span>
-                        )}
                       </div>
                     </div>
                   )}
 
                   {/* Action Buttons */}
                   <div className="flex gap-2 mt-auto pt-4 border-t border-slate-100">
-                    <button className="flex-1 bg-slate-100 text-slate-700 py-2.5 px-4 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => handlePlaceClick(place)}
+                      className="flex-1 bg-slate-100 text-slate-700 py-2.5 px-4 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+                    >
                       <Info size={14} /> Details
                     </button>
                     {place.google_maps_url ? (
@@ -404,7 +393,7 @@ export default function Places() {
         {loading && (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-800 mx-auto"></div>
-            <p className="mt-4 text-slate-600 font-medium">Loading hidden gems...</p>
+            <p className="mt-4 text-slate-600 font-medium">Loading places...</p>
           </div>
         )}
 
@@ -436,6 +425,111 @@ export default function Places() {
           </div>
         )}
       </main>
+
+      {/* Place Details Modal */}
+      {selectedPlace && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl animate-scale-up relative">
+            <button
+              onClick={() => setSelectedPlace(null)}
+              className="absolute top-4 right-4 z-10 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="relative h-64 md:h-80">
+              {selectedPlace.image_url ? (
+                <img
+                  src={selectedPlace.image_url}
+                  alt={selectedPlace.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-slate-100 flex items-center justify-center">
+                  <MapPin size={48} className="text-slate-300" />
+                </div>
+              )}
+              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-6 pt-20">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md mb-2 inline-block">
+                      {selectedPlace.type}
+                    </span>
+                    <h2 className="text-3xl font-bold text-white">{selectedPlace.name}</h2>
+                  </div>
+                  {selectedPlace.rating && (
+                    <div className="flex items-center gap-1 bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/20">
+                      <Star size={16} className="text-yellow-400 fill-yellow-400" />
+                      <span className="text-white font-bold">{selectedPlace.rating}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-8">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">About this place</h3>
+                <p className="text-slate-600 leading-relaxed">{selectedPlace.description}</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-2 text-slate-500 mb-1">
+                    <Clock size={16} />
+                    <span className="text-xs font-bold uppercase">Timings</span>
+                  </div>
+                  <p className="font-semibold text-slate-800">{selectedPlace.timings || 'Not specified'}</p>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-2 text-slate-500 mb-1">
+                    <DollarSign size={16} />
+                    <span className="text-xs font-bold uppercase">Entry Fee</span>
+                  </div>
+                  <p className="font-semibold text-slate-800">{selectedPlace.entryFee || 'Free'}</p>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-2 text-slate-500 mb-1">
+                    <Calendar size={16} />
+                    <span className="text-xs font-bold uppercase">Best Time</span>
+                  </div>
+                  <p className="font-semibold text-slate-800">{selectedPlace.bestTime || 'Anytime'}</p>
+                </div>
+              </div>
+
+              {selectedPlace.highlights && selectedPlace.highlights.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800 mb-3">Highlights</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedPlace.highlights.map((highlight, idx) => (
+                      <span key={idx} className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-sm font-medium border border-indigo-100">
+                        {highlight}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-4 pt-4 border-t border-slate-100">
+                {selectedPlace.google_maps_url ? (
+                  <a
+                    href={selectedPlace.google_maps_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 bg-blue-600 text-white py-3.5 px-6 rounded-xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200 active:scale-95 text-center"
+                  >
+                    <Navigation size={18} /> Get Directions
+                  </a>
+                ) : (
+                  <button disabled className="flex-1 bg-slate-200 text-slate-400 py-3.5 px-6 rounded-xl font-bold cursor-not-allowed flex items-center justify-center gap-2">
+                    <Navigation size={18} /> Directions Unavailable
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -13,7 +13,8 @@ import {
   ArrowRight,
   Zap,
   Calendar,
-  Heart
+  Heart,
+  Settings
 } from 'lucide-react';
 
 import { Header } from '@/components/Header';
@@ -159,7 +160,15 @@ export default function DearKochi() {
                   {user ? `Welcome, ${user.email?.split('@')[0]}` : 'Guest User'}
                 </div>
               </div>
-              {!user && (
+              {user ? (
+                <button
+                  onClick={() => router.push('/settings')}
+                  className="flex items-center justify-center gap-2 text-xs text-blue-600 font-bold mt-3 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors"
+                >
+                  <Settings size={14} />
+                  Settings
+                </button>
+              ) : (
                 <button onClick={() => router.push('/profile')} className="text-xs text-blue-600 font-bold mt-2 hover:underline">
                   Sign In →
                 </button>

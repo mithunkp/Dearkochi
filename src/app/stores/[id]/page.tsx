@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { UserDisplay } from '@/components/UserDisplay';
 
 type Store = {
     id: number;
@@ -27,6 +28,8 @@ type Comment = {
     profiles: {
         full_name: string | null;
         email: string | null;
+        nickname: string | null;
+        flair: string | null;
     } | null;
 };
 
@@ -85,7 +88,9 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
         *,
         profiles (
           full_name,
-          email
+          email,
+          nickname,
+          flair
         )
       `)
                 .eq('store_id', id)
@@ -332,7 +337,12 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
                                         </div>
                                         <div>
                                             <p className="font-semibold text-sm text-gray-900">
-                                                {comment.profiles?.full_name || comment.profiles?.email?.split('@')[0] || 'Anonymous'}
+                                                <UserDisplay
+                                                    nickname={comment.profiles?.nickname}
+                                                    flair={comment.profiles?.flair}
+                                                    full_name={comment.profiles?.full_name}
+                                                    email={comment.profiles?.email}
+                                                />
                                             </p>
                                             <p className="text-xs text-gray-500">
                                                 {new Date(comment.created_at).toLocaleDateString()}

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import { LocalEvent } from '@/app/local-events/page';
+import { UserDisplay } from '@/components/UserDisplay';
 import { X, Send, Users, MapPin, Clock, Lock, AlertCircle, MoreVertical, Trash2, StopCircle, Zap, Check, UserPlus, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -21,8 +22,10 @@ type Message = {
     created_at: string;
     profiles: {
         nickname: string | null;
+        flair: string | null;
         email: string;
     };
+    skipAnimation?: boolean;
 };
 
 type Participant = {
@@ -31,6 +34,7 @@ type Participant = {
     request_message?: string;
     profiles: {
         nickname: string | null;
+        flair: string | null;
         email: string;
     };
 };
@@ -106,18 +110,21 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 setIsCreator(false);
             }
 
-            // Fetch participants and check if event is full
+            // Parallel fetch for speed
             if (isMounted) {
-                await fetchParticipants();
-                if (isEventCreator) {
-                    await fetchPendingRequests();
-                }
-            }
+                const canViewChat = !event.is_private || userHasJoined || isEventCreator;
 
-            // Fetch messages if user has access
-            const canViewChat = !event.is_private || userHasJoined || isEventCreator;
-            if (canViewChat && isMounted) {
-                await fetchMessages();
+                const promises = [fetchParticipants()];
+
+                if (isEventCreator) {
+                    promises.push(fetchPendingRequests());
+                }
+
+                if (canViewChat) {
+                    promises.push(fetchMessages());
+                }
+
+                await Promise.all(promises);
             }
 
             // Realtime subscriptions
@@ -192,7 +199,32 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
     const fetchMessageSender = async (msg: any) => {
         const { data } = await supabase.from('profiles').select('nickname, email').eq('id', msg.user_id).single();
         if (data) {
-            setMessages(prev => [...prev, { ...msg, profiles: data }]);
+            setMessages(prev => {
+                const fullMessage = { ...msg, profiles: data };
+
+                // 1. Check if message with this ID already exists (Dedupe real updates)
+                if (prev.some(m => m.id === fullMessage.id)) {
+                    return prev;
+                }
+
+                // 2. Check for matching optimistic message (Same user, same content, temp ID)
+                const optimisticMatchIndex = prev.findIndex(m =>
+                    m.user_id === fullMessage.user_id &&
+                    m.content === fullMessage.content &&
+                    String(m.id).startsWith('temp-')
+                );
+
+                if (optimisticMatchIndex !== -1) {
+                    // Replace optimistic message with real message (preserves position)
+                    const newMessages = [...prev];
+                    // Mark as skipAnimation to prevent "slide-in" from running again when key changes
+                    newMessages[optimisticMatchIndex] = { ...fullMessage, skipAnimation: true };
+                    return newMessages;
+                }
+
+                // 3. Otherwise append new message
+                return [...prev, fullMessage];
+            });
         }
     };
 
@@ -219,6 +251,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                     user_id,
                     profiles (
                         nickname,
+                        flair,
                         email
                     )
                 `)
@@ -243,6 +276,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 user_id: msg.user_id,
                 profiles: {
                     nickname: msg.profiles?.nickname || null,
+                    flair: msg.profiles?.flair || null,
                     email: msg.profiles?.email || ''
                 }
             }));
@@ -264,6 +298,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 status,
                 profiles (
                     nickname,
+                    flair,
                     email
                 )
             `)
@@ -286,6 +321,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
             status: p.status,
             profiles: {
                 nickname: p.profiles?.nickname || null,
+                flair: p.profiles?.flair || null,
                 email: p.profiles?.email || ''
             }
         }));
@@ -307,6 +343,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 request_message,
                 profiles (
                     nickname,
+                    flair,
                     email
                 )
             `)
@@ -329,6 +366,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
             request_message: p.request_message,
             profiles: {
                 nickname: p.profiles?.nickname || null,
+                flair: p.profiles?.flair || null,
                 email: p.profiles?.email || ''
             }
         }));
@@ -461,26 +499,65 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
         }
     };
 
+    const handleDeleteEvent = async () => {
+        if (!user || user.id !== event.creator_id) return;
+        if (confirm('Are you sure you want to delete this event? This cannot be undone.')) {
+            const { error } = await supabase.from('local_events').delete().eq('id', event.id);
+
+            if (error) {
+                console.error('Error deleting event:', error);
+                alert('Failed to delete event');
+            } else {
+                onUpdate(); // Should trigger a refresh in parent/list
+                onClose();  // Close the modal
+            }
+        }
+    };
+
     const [isSending, setIsSending] = useState(false);
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newMessage.trim() || !user || isSending) return;
 
+        const messageContent = newMessage.trim();
+        setNewMessage(''); // Clear input immediately
         setIsSending(true);
+
+        // Optimistic update
+        const tempId = `temp-${Date.now()}`;
+        const optimisticMessage: Message = {
+            id: tempId,
+            user_id: user.id,
+            content: messageContent,
+            created_at: new Date().toISOString(),
+            profiles: {
+                nickname: userNickname || 'Me',
+                email: user.email || '',
+                flair: null // Can fetch if needed, but 'Me' is fine for immediate
+            }
+        };
+
+        setMessages(prev => [...prev, optimisticMessage]);
+        setTimeout(() => scrollToBottom(), 100);
+
         try {
             const { error } = await supabase.from('event_messages').insert({
                 event_id: event.id,
                 user_id: user.id,
-                content: newMessage.trim()
+                content: messageContent
             });
 
-            if (error) throw error;
-            setNewMessage('');
-            // Scroll to bottom after sending message
-            setTimeout(() => {
-                scrollToBottom();
-            }, 100);
+            if (error) {
+                // Rollback on error
+                setMessages(prev => prev.filter(m => m.id !== tempId));
+                setNewMessage(messageContent); // Restore input
+                throw error;
+            }
+
+            // Success - the realtime subscription will replace/dedup the message eventually
+            // but we keep the optimistic one until then or let fetchMessageSender handle de-dupe
+
         } catch (error) {
             console.error('Error sending message:', error);
             alert('Failed to send message. Please try again.');
@@ -507,13 +584,13 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-[32px] w-full max-w-4xl h-[85vh] overflow-hidden shadow-2xl flex flex-col md:flex-row animate-slide-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white/95 backdrop-blur-xl rounded-[32px] w-full max-w-4xl h-[85vh] overflow-hidden shadow-2xl flex flex-col md:flex-row animate-slide-in border border-white/20 ring-1 ring-black/5">
 
                 {/* LEFT SIDE: Info */}
-                <div className="w-full md:w-1/3 bg-slate-50 p-6 border-r border-slate-100 flex flex-col overflow-y-auto">
+                <div className="w-full md:w-1/3 bg-slate-50/50 p-6 border-r border-slate-100/50 flex flex-col overflow-y-auto backdrop-blur-md">
                     <div className="flex justify-between items-start mb-6">
-                        <div className={`px-3 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${event.event_type === 'live' ? 'bg-red-100 text-red-600' : 'bg-purple-100 text-purple-600'
+                        <div className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide inline-flex items-center gap-1.5 shadow-sm ${event.event_type === 'live' ? 'bg-red-100 text-red-600' : 'bg-purple-100 text-purple-600'
                             }`}>
                             {event.event_type === 'live' ? <Zap size={12} /> : <Clock size={12} />}
                             {event.event_type === 'live' ? 'LIVE' : 'Scheduled'}
@@ -568,6 +645,10 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                             <div className="w-full py-3 bg-red-50 text-red-600 rounded-xl font-bold text-center border-2 border-red-200">
                                 Event Full ({participants.length}/{event.max_participants})
                             </div>
+                        ) : isCreator ? (
+                            <button type="button" onClick={handleDeleteEvent} className="w-full py-3 border-2 border-red-100 text-red-600 hover:bg-red-50 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+                                <Trash2 size={20} /> Delete Event
+                            </button>
                         ) : hasJoined ? (
                             <button type="button" onClick={handleLeave} className="w-full py-3 border-2 border-red-100 text-red-500 hover:bg-red-50 rounded-xl font-bold transition-colors">
                                 Leave Event
@@ -585,9 +666,9 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                                 type="button"
                                 onClick={handleJoinClick}
                                 disabled={loading || isEventFull}
-                                className={`w-full py-3 rounded-xl font-bold shadow-lg transition-all ${loading || isEventFull
+                                className={`w-full py-3.5 rounded-xl font-bold shadow-lg transition-all active:scale-[0.98] ${loading || isEventFull
                                     ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                                    : 'bg-[#5A4FCF] hover:bg-[#4a3fc1] text-white shadow-purple-200'
+                                    : 'bg-gradient-to-r from-[#5A4FCF] to-[#7a71e6] hover:brightness-110 text-white shadow-purple-200'
                                     }`}
                             >
                                 {loading ? 'Processing...' : event.requires_approval ? 'Request to Join' : 'Join Event'}
@@ -597,8 +678,8 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 </div>
 
                 {/* RIGHT SIDE: Chat / Participants */}
-                <div className="flex-1 flex flex-col bg-white relative">
-                    <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex-1 flex flex-col bg-white/80 relative backdrop-blur-sm">
+                    <div className="p-4 border-b border-slate-100/50 flex justify-between items-center bg-white/50 backdrop-blur-md sticky top-0 z-10">
                         <div className="flex gap-4">
                             <button
                                 type="button"
@@ -637,9 +718,13 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                                                         <div className="w-8 h-8 rounded-full bg-orange-200 text-orange-700 flex items-center justify-center font-bold text-xs">
                                                             {p.profiles.nickname?.[0]?.toUpperCase() || '?'}
                                                         </div>
-                                                        <div>
-                                                            <div className="font-medium text-sm text-slate-800">{p.profiles.nickname || 'Unknown'}</div>
-                                                            <div className="text-xs text-slate-500">{p.profiles.email}</div>
+                                                        <div className="flex flex-col">
+                                                            <UserDisplay
+                                                                nickname={p.profiles.nickname}
+                                                                flair={p.profiles.flair}
+                                                                email={p.profiles.email}
+                                                                className="text-slate-800"
+                                                            />
                                                         </div>
                                                     </div>
                                                     <div className="flex gap-2">
@@ -684,9 +769,13 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                                                 <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-xs">
                                                     {p.profiles.nickname?.[0]?.toUpperCase() || '?'}
                                                 </div>
-                                                <div>
-                                                    <div className="font-medium text-sm text-slate-800">{p.profiles.nickname || 'Unknown'}</div>
-                                                    {isCreator && <div className="text-xs text-slate-400">{p.profiles.email}</div>}
+                                                <div className="flex flex-col">
+                                                    <UserDisplay
+                                                        nickname={p.profiles.nickname}
+                                                        flair={p.profiles.flair}
+                                                        email={p.profiles.email}
+                                                        className="text-slate-800"
+                                                    />
                                                 </div>
                                             </div>
                                             {isCreator && p.user_id !== user?.id && (
@@ -703,15 +792,29 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                         <>
                             {canViewChat ? (
                                 <>
-                                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#f8f9fc]">
+                                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#f8f9fc]/50">
                                         {messages.map((msg) => {
                                             const isMe = msg.user_id === user?.id;
                                             return (
-                                                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                                    <div className={`max-w-[80%] ${isMe ? 'bg-[#5A4FCF] text-white rounded-br-none' : 'bg-white text-slate-800 border border-slate-100 rounded-bl-none'} p-3 rounded-2xl shadow-sm`}>
-                                                        {!isMe && <div className="text-xs font-bold mb-1 opacity-70">{msg.profiles.nickname}</div>}
-                                                        <div className="text-sm">{msg.content}</div>
-                                                        <div className="text-[10px] mt-1 opacity-60 text-right">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${msg.skipAnimation ? '' : 'animate-slide-in'}`}>
+                                                    <div className={`max-w-[80%] ${isMe
+                                                        ? 'bg-gradient-to-br from-[#5A4FCF] to-[#7a71e6] text-white rounded-br-sm shadow-purple-100'
+                                                        : 'bg-white text-slate-800 border border-slate-100 rounded-bl-sm shadow-sm'
+                                                        } p-3.5 rounded-2xl shadow-md transition-all hover:shadow-lg`}>
+                                                        {!isMe && (
+                                                            <div className="mb-1.5 flex items-center gap-2 border-b border-black/5 pb-1">
+                                                                <UserDisplay
+                                                                    nickname={msg.profiles.nickname}
+                                                                    flair={msg.profiles.flair}
+                                                                    email={msg.profiles.email}
+                                                                    className="opacity-90 font-medium"
+                                                                />
+                                                            </div>
+                                                        )}
+                                                        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</div>
+                                                        <div className={`text-[10px] mt-1.5 text-right ${isMe ? 'text-white/70' : 'text-slate-400'}`}>
+                                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );
@@ -719,10 +822,10 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                                         <div ref={messagesEndRef} />
                                     </div>
 
-                                    <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-100 bg-white">
+                                    <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-100/50 bg-white/80 backdrop-blur-md">
                                         {!canSendMessages ? (
-                                            <div className="text-center py-3">
-                                                <p className="text-sm text-slate-500">
+                                            <div className="text-center py-3 bg-slate-50 rounded-xl border border-slate-200/50">
+                                                <p className="text-sm text-slate-500 font-medium">
                                                     {!user ? 'Sign in to chat' :
                                                         !userNickname ? 'Set a nickname to chat' :
                                                             !hasJoined && !isCreator ? 'Join the event to chat' : 'Loading...'}
@@ -733,18 +836,21 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                                                 <input
                                                     type="text"
                                                     placeholder="Type a message..."
-                                                    className="flex-1 px-4 py-3 bg-slate-50 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                                                    className="flex-1 px-4 py-3.5 bg-slate-50 border-slate-200/50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#5A4FCF]/20 focus:border-[#5A4FCF]/30 transition-all placeholder:text-slate-400"
                                                     value={newMessage}
                                                     onChange={e => setNewMessage(e.target.value)}
                                                     disabled={!canSendMessages}
                                                 />
                                                 <button
                                                     type="submit"
-                                                    className={`p-3 ${isSending || !canSendMessages ? 'bg-slate-400' : 'bg-[#5A4FCF] hover:bg-[#4a3fc1]'} text-white rounded-xl transition-colors`}
+                                                    className={`p-3.5 ${isSending || !canSendMessages
+                                                        ? 'bg-slate-200 text-slate-400'
+                                                        : 'bg-[#5A4FCF] hover:bg-[#4a3fc1] text-white shadow-lg shadow-purple-200 active:scale-95'
+                                                        } rounded-xl transition-all duration-200`}
                                                     disabled={isSending || !canSendMessages}
                                                 >
                                                     {isSending ? (
-                                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                                                     ) : (
                                                         <Send size={20} />
                                                     )}

@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { UserDisplay } from '@/components/UserDisplay';
 
 type ChatListItem = {
     id: number;
@@ -21,10 +22,14 @@ type ChatListItem = {
     buyer_profile: {
         full_name: string | null;
         email: string | null;
+        nickname: string | null;
+        flair: string | null;
     } | null;
     seller_profile: {
         full_name: string | null;
         email: string | null;
+        nickname: string | null;
+        flair: string | null;
     } | null;
     last_message?: {
         content: string;
@@ -61,11 +66,15 @@ export default function ChatsPage() {
                     ),
                     buyer_profile:profiles!chats_buyer_id_fkey (
                         full_name,
-                        email
+                        email,
+                        nickname,
+                        flair
                     ),
                     seller_profile:profiles!chats_seller_id_fkey (
                         full_name,
-                        email
+                        email,
+                        nickname,
+                        flair
                     )
                 `)
                 .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
@@ -157,9 +166,16 @@ export default function ChatsPage() {
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-sm text-gray-600 mb-1">
-                                            {otherUserName} • <span className="text-gray-400">{role}</span>
-                                        </p>
+                                        <div className="text-sm text-gray-600 mb-1 flex items-center gap-2">
+                                            <UserDisplay
+                                                nickname={otherUser?.nickname}
+                                                flair={otherUser?.flair}
+                                                email={otherUser?.email}
+                                                fallback="User"
+                                                showFlair={true}
+                                            />
+                                            <span className="text-gray-400">• {role}</span>
+                                        </div>
                                         {chat.last_message ? (
                                             <p className="text-sm text-gray-500 truncate">
                                                 {chat.last_message.content}

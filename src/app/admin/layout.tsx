@@ -12,7 +12,9 @@ import {
     Settings,
     LogOut,
     Menu,
-    X
+    X,
+    AlertCircle,
+    Users
 } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -71,6 +73,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { icon: MapPin, label: 'Places', href: '/admin/places' },
         { icon: Tag, label: 'Classifieds', href: '/admin/classified' },
         { icon: Calendar, label: 'Events', href: '/admin/events' },
+        { icon: Users, label: 'Users', href: '/admin/users' },
+        { icon: AlertCircle, label: 'Maintenance', href: '/admin/maintenance' },
     ];
 
     if (pathname === '/admin/login') {

@@ -1,8 +1,13 @@
+'use client';
+
 import React from 'react';
 import { Settings, Search, Sun } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export function Header() {
+    const router = useRouter();
+
     return (
         <header className="flex justify-between items-center px-8 py-4 bg-white/85 backdrop-blur-xl border-b border-white/40 sticky top-0 z-50">
             <Link href="/" className="flex items-center gap-2.5 no-underline">
@@ -15,7 +20,10 @@ export function Header() {
 
 
             <div className="flex items-center gap-3">
-                <button className="w-10 h-10 rounded-full border border-slate-300 bg-white/60 backdrop-blur-sm flex items-center justify-center cursor-pointer text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">
+                <button
+                    onClick={() => router.push('/settings')}
+                    className="w-10 h-10 rounded-full border border-slate-300 bg-white/60 backdrop-blur-sm flex items-center justify-center cursor-pointer text-slate-600 hover:bg-white hover:text-slate-900 transition-colors"
+                >
                     <Settings size={18} />
                 </button>
                 <button className="w-10 h-10 rounded-full border border-slate-300 bg-white/60 backdrop-blur-sm flex items-center justify-center cursor-pointer text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">

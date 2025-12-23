@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { UserDisplay } from '@/components/UserDisplay';
 
 type Message = {
     id: number;
@@ -13,6 +14,11 @@ type Message = {
     content: string;
     created_at: string;
     read_at: string | null;
+    profiles: {
+        nickname: string | null;
+        flair: string | null;
+        email: string;
+    };
 };
 
 type Chat = {
@@ -29,10 +35,14 @@ type Chat = {
     buyer_profile: {
         full_name: string | null;
         email: string | null;
+        nickname: string | null;
+        flair: string | null;
     } | null;
     seller_profile: {
         full_name: string | null;
         email: string | null;
+        nickname: string | null;
+        flair: string | null;
     } | null;
 };
 
@@ -82,11 +92,15 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                     ),
                     buyer_profile:profiles!chats_buyer_id_fkey (
                         full_name,
-                        email
+                        email,
+                        nickname,
+                        flair
                     ),
                     seller_profile:profiles!chats_seller_id_fkey (
                         full_name,
-                        email
+                        email,
+                        nickname,
+                        flair
                     )
                 `)
                 .eq('id', id)
@@ -105,7 +119,14 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         try {
             const { data, error } = await supabase
                 .from('messages')
-                .select('*')
+                .select(`
+                    *,
+                    profiles:sender_id (
+                        nickname,
+                        flair,
+                        email
+                    )
+                `)
                 .eq('chat_id', id)
                 .order('created_at', { ascending: true });
 
@@ -127,11 +148,23 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                     table: 'messages',
                     filter: `chat_id=eq.${id}`
                 },
-                (payload) => {
-                    const newMessage = payload.new as Message;
+                async (payload) => {
+                    const newMessage = payload.new as any;
+                    // Fetch sender profile
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('nickname, flair, email')
+                        .eq('id', newMessage.sender_id)
+                        .single();
+
+                    const messageWithProfile: Message = {
+                        ...newMessage,
+                        profiles: profile || { nickname: null, flair: null, email: '' }
+                    };
+
                     setMessages((prev) => {
-                        if (prev.some(m => m.id === newMessage.id)) return prev;
-                        return [...prev, newMessage];
+                        if (prev.some(m => m.id === messageWithProfile.id)) return prev;
+                        return [...prev, messageWithProfile];
                     });
                 }
             )
@@ -155,7 +188,14 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                     sender_id: user.id,
                     content: newMessage.trim()
                 })
-                .select()
+                .select(`
+                    *,
+                    profiles:sender_id (
+                        nickname,
+                        flair,
+                        email
+                    )
+                `)
                 .single();
 
             if (error) throw error;
@@ -197,7 +237,15 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                     <div className="flex-1">
                         <h1 className="text-xl font-bold">{chat.classified_ads?.title}</h1>
                         <p className="text-sm text-gray-600">
-                            Chatting with {otherUserName}
+                            Chatting with
+                            <UserDisplay
+                                nickname={otherUser?.nickname}
+                                flair={otherUser?.flair}
+                                email={otherUser?.email}
+                                fallback="User"
+                                className="inline-flex ml-1 align-bottom"
+                                showFlair={true}
+                            />
                         </p>
                     </div>
                     {chat.classified_ads?.price && (
@@ -228,6 +276,16 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                                         : 'bg-white text-gray-900 border'
                                         }`}
                                 >
+                                    {!isOwn && (
+                                        <div className="mb-1">
+                                            <UserDisplay
+                                                nickname={message.profiles?.nickname}
+                                                flair={message.profiles?.flair}
+                                                email={message.profiles?.email}
+                                                className="opacity-90"
+                                            />
+                                        </div>
+                                    )}
                                     <p className="break-words">{message.content}</p>
                                     <p
                                         className={`text-xs mt-1 ${isOwn ? 'text-blue-100' : 'text-gray-500'

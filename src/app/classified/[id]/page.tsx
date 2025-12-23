@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { UserDisplay } from '@/components/UserDisplay';
 
 type Ad = {
     id: number;
@@ -23,6 +24,8 @@ type Ad = {
     profiles: {
         full_name: string | null;
         email: string | null;
+        nickname: string | null;
+        flair: string | null;
     } | null;
 };
 
@@ -51,7 +54,9 @@ export default function AdDetailPage({ params }: { params: Promise<{ id: string 
           ),
           profiles (
             full_name,
-            email
+            email,
+            nickname,
+            flair
           )
         `)
                 .eq('id', id)
@@ -177,8 +182,13 @@ export default function AdDetailPage({ params }: { params: Promise<{ id: string 
 
                     <div className="border-t pt-6 mb-6">
                         <h3 className="font-semibold text-gray-900 mb-2">Posted by</h3>
-                        <p className="text-gray-600">
-                            {ad.profiles?.full_name || ad.profiles?.email?.split('@')[0] || 'Anonymous'}
+                        <p className="text-gray-600 text-lg">
+                            <UserDisplay
+                                nickname={ad.profiles?.nickname}
+                                flair={ad.profiles?.flair}
+                                full_name={ad.profiles?.full_name}
+                                email={ad.profiles?.email}
+                            />
                         </p>
                         <p className="text-sm text-gray-400 mt-1">
                             {new Date(ad.created_at).toLocaleDateString()}
