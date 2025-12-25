@@ -132,7 +132,7 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
             .from('store_ratings')
             .select('rating')
             .eq('store_id', id)
-            .eq('user_id', user.id)
+            .eq('user_id', user.uid)
             .single();
 
         if (data) {
@@ -151,7 +151,7 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
                 .from('store_ratings')
                 .upsert({
                     store_id: parseInt(id),
-                    user_id: user.id,
+                    user_id: user.uid,
                     rating: rating
                 });
 
@@ -180,7 +180,7 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
                 .from('store_comments')
                 .insert({
                     store_id: parseInt(id),
-                    user_id: user.id,
+                    user_id: user.uid,
                     content: newComment.trim()
                 });
 
