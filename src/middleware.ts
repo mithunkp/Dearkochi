@@ -13,13 +13,31 @@ export async function middleware(req: NextRequest) {
     const pathname = req.nextUrl.pathname;
 
     // 1. Bypass static assets and critical paths
+    // 0. Protect Admin Routes (Static Auth)
+    if (pathname.startsWith('/admin')) {
+        // Allow access to login page
+        if (pathname === '/admin/login') {
+            return res;
+        }
+
+        // Check for admin session cookie
+        const adminSession = req.cookies.get('admin_session');
+
+        if (!adminSession) {
+            return NextResponse.redirect(new URL('/admin/login', req.url));
+        }
+        console.log('Middleware: Admin session valid');
+    }
+
+    // 1. Bypass static assets and critical paths
     if (
         pathname.startsWith('/_next') ||
         pathname.startsWith('/static') ||
         pathname.startsWith('/api') ||
         pathname.includes('.') || // extension files
-        pathname.startsWith('/admin') || // Admin panel always accessible
-        pathname.startsWith('/auth')     // Auth routes always accessible
+        // pathname.startsWith('/admin') || // REMOVED: Managed separately above
+        pathname.startsWith('/auth') ||    // Auth routes always accessible
+        process.env.NODE_ENV === 'development' // Bypass all checks in development
     ) {
         return res;
     }

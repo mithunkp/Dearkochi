@@ -61,7 +61,7 @@ export default function NewAdPage() {
                     ...formData,
                     price: formData.price ? parseFloat(formData.price) : null,
                     category_id: formData.category_id ? parseInt(formData.category_id) : null,
-                    user_id: user.id,
+                    user_id: user.uid,
                 });
 
             if (error) throw error;

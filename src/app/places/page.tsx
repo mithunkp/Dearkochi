@@ -146,8 +146,8 @@ export default function Places() {
         description: place.description,
         type: place.type,
         rating: place.rating || 4.5,
-        bestTime: place.best_time_to_visit || place.best_time, // Handling potential column name differences
-        entryFee: place.ticket_price || place.entry_fee,
+        bestTime: place.best_time,
+        entryFee: place.entry_fee,
         timings: place.timings,
         highlights: place.highlights || [],
         image_url: place.image_url,

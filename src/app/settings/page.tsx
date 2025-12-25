@@ -25,15 +25,11 @@ type Profile = {
     flair: string | null;
     bio: string | null;
     avatar_url: string | null;
+    is_special_flair_allowed?: boolean;
+    flair_color?: string | null;
 };
 
-const FLAIR_OPTIONS = [
-    '⭐', '🌟', '✨', '💫', '🔥', '❤️', '💙', '💚', '💜', '🧡',
-    '🎨', '🎭', '🎪', '🎬', '🎮', '🎯', '🎲', '🎵', '🎸', '🎹',
-    '☕', '🍕', '🍔', '🍰', '🍦', '🍺', '🍷', '🥂', '🍾', '🎂',
-    '🚀', '✈️', '🚗', '🏍️', '🚲', '⛵', '🏄', '🏊', '⚽', '🏀',
-    '📚', '📖', '✍️', '💼', '💻', '📱', '🎓', '🏆', '👑', '💎'
-];
+import { PUBLIC_FLAIRS, isSpecialFlair, SPECIAL_FLAIRS } from '@/lib/flairs';
 
 export default function SettingsPage() {
     const router = useRouter();
@@ -48,6 +44,8 @@ export default function SettingsPage() {
     const [flair, setFlair] = useState('');
     const [bio, setBio] = useState('');
     const [fullName, setFullName] = useState('');
+    const [flairColor, setFlairColor] = useState('#000000');
+    const [isSpecialAllowed, setIsSpecialAllowed] = useState(false);
 
     useEffect(() => {
         if (user) {
@@ -63,7 +61,7 @@ export default function SettingsPage() {
             const { data, error } = await supabase
                 .from('profiles')
                 .select('*')
-                .eq('id', user.id)
+                .eq('id', user.uid)
                 .single();
 
             if (error && error.code !== 'PGRST116') {
@@ -76,10 +74,12 @@ export default function SettingsPage() {
                 setFlair(data.flair || '');
                 setBio(data.bio || '');
                 setFullName(data.full_name || '');
+                setIsSpecialAllowed(data.is_special_flair_allowed || false);
+                setFlairColor(data.flair_color || '#000000');
             } else {
                 // Create basic profile if it doesn't exist
                 setProfile({
-                    id: user.id,
+                    id: user.uid,
                     email: user.email || '',
                     full_name: null,
                     nickname: null,
@@ -103,11 +103,12 @@ export default function SettingsPage() {
 
         try {
             const updates = {
-                id: user.id,
+                id: user.uid,
                 nickname: nickname.trim() || null,
                 flair: flair || null,
                 bio: bio.trim() || null,
                 full_name: fullName.trim() || null,
+                flair_color: flairColor || null,
                 updated_at: new Date().toISOString(),
             };
 
@@ -247,31 +248,70 @@ export default function SettingsPage() {
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
                                     Custom Flair
+                                    {isSpecialAllowed && <span className="ml-2 text-[10px] bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full border border-purple-200">✨ Special Access Unlocked</span>}
                                 </label>
-                                <div className="grid grid-cols-10 gap-2 p-4 bg-slate-50 rounded-xl border border-slate-200 mb-2">
-                                    {FLAIR_OPTIONS.map((emoji) => (
-                                        <button
-                                            key={emoji}
-                                            onClick={() => setFlair(emoji)}
-                                            className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl transition-all hover:scale-110 ${flair === emoji
-                                                    ? 'bg-blue-500 shadow-lg ring-2 ring-blue-300'
-                                                    : 'bg-white hover:bg-slate-100'
-                                                }`}
-                                            type="button"
-                                        >
-                                            {emoji}
-                                        </button>
-                                    ))}
+
+                                <div className="space-y-4">
+                                    {/* Standard Flairs */}
+                                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                                        <p className="text-xs font-bold text-slate-400 uppercase mb-3">Standard Badges</p>
+                                        <div className="grid grid-cols-10 gap-2 max-h-48 overflow-y-auto custom-scrollbar">
+                                            {PUBLIC_FLAIRS.map((emoji) => (
+                                                <button
+                                                    key={emoji}
+                                                    onClick={() => setFlair(emoji)}
+                                                    className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl transition-all hover:scale-110 ${flair === emoji
+                                                        ? 'bg-blue-500 shadow-lg ring-2 ring-blue-300'
+                                                        : 'bg-white hover:bg-slate-100'
+                                                        }`}
+                                                    type="button"
+                                                >
+                                                    {emoji}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Special Flairs (Conditional) */}
+                                    {isSpecialAllowed && (
+                                        <div className="bg-purple-50 rounded-xl border border-purple-200 p-4">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <p className="text-xs font-bold text-purple-600 uppercase">Special / Rare Badges</p>
+                                                {/* Color Picker */}
+                                                <div className="flex items-center gap-2">
+                                                    <label className="text-xs font-medium text-purple-700">Badge Color:</label>
+                                                    <input
+                                                        type="color"
+                                                        value={flairColor}
+                                                        onChange={(e) => setFlairColor(e.target.value)}
+                                                        className="w-8 h-8 rounded cursor-pointer border-0 p-0 bg-transparent"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-10 gap-2">
+                                                {SPECIAL_FLAIRS.map((emoji) => (
+                                                    <button
+                                                        key={emoji}
+                                                        onClick={() => setFlair(emoji)}
+                                                        className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl transition-all hover:scale-110 ${flair === emoji
+                                                            ? 'bg-purple-500 shadow-lg ring-2 ring-purple-300'
+                                                            : 'bg-white hover:bg-purple-100'
+                                                            }`}
+                                                        type="button"
+                                                        style={{ color: flair === emoji ? 'white' : flairColor }}
+                                                    >
+                                                        {emoji}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="text"
-                                        value={flair}
-                                        onChange={(e) => setFlair(e.target.value.slice(0, 2))}
-                                        className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                        placeholder="Or type any emoji"
-                                        maxLength={2}
-                                    />
+
+                                <div className="flex items-center gap-2 mt-4">
+                                    <div className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 flex items-center gap-2 cursor-not-allowed">
+                                        <span className="text-xl" style={{ color: flairColor }}>{flair || <span className="text-slate-400 text-sm">Select an emoji above</span>}</span>
+                                    </div>
                                     {flair && (
                                         <button
                                             onClick={() => setFlair('')}
@@ -282,7 +322,7 @@ export default function SettingsPage() {
                                         </button>
                                     )}
                                 </div>
-                                <p className="text-xs text-slate-400 mt-1">Add a fun emoji badge to your profile</p>
+                                <p className="text-xs text-slate-400 mt-1">Select a badge to display next to your name</p>
                             </div>
 
                             {/* Bio */}
@@ -319,7 +359,7 @@ export default function SettingsPage() {
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <span className="font-bold text-slate-800">{nickname}</span>
-                                                {flair && <span className="text-lg">{flair}</span>}
+                                                {flair && <span className="text-lg" style={{ color: flairColor }}>{flair}</span>}
                                             </div>
                                             {bio && <p className="text-xs text-slate-600 line-clamp-1">{bio}</p>}
                                         </div>
@@ -341,7 +381,7 @@ export default function SettingsPage() {
                         </button>
                     </div>
                 </div>
-            </main>
-        </div>
+            </main >
+        </div >
     );
 }

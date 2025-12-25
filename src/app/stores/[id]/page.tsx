@@ -336,14 +336,14 @@ export default function StoreDetailPage({ params }: { params: Promise<{ id: stri
                                             {comment.profiles?.full_name?.[0] || comment.profiles?.email?.[0] || '?'}
                                         </div>
                                         <div>
-                                            <p className="font-semibold text-sm text-gray-900">
+                                            <div className="font-semibold text-sm text-gray-900">
                                                 <UserDisplay
                                                     nickname={comment.profiles?.nickname}
                                                     flair={comment.profiles?.flair}
                                                     full_name={comment.profiles?.full_name}
                                                     email={comment.profiles?.email}
                                                 />
-                                            </p>
+                                            </div>
                                             <p className="text-xs text-gray-500">
                                                 {new Date(comment.created_at).toLocaleDateString()}
                                             </p>

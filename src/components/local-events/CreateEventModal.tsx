@@ -72,14 +72,14 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
         }
 
         // Check for nickname first
-        const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
+        const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.uid).single();
         if (!profile?.nickname) {
             const nick = prompt('Please set a nickname before creating an event:');
             if (!nick || !nick.trim()) {
                 alert('A nickname is required to create events');
                 return;
             }
-            const { error: updateError } = await supabase.from('profiles').update({ nickname: nick.trim() }).eq('id', user.id);
+            const { error: updateError } = await supabase.from('profiles').update({ nickname: nick.trim() }).eq('id', user.uid);
             if (updateError) {
                 alert('Failed to set nickname. Please try again.');
                 return;
@@ -128,7 +128,7 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
             }
 
             const { data: newEvent, error } = await supabase.from('local_events').insert({
-                creator_id: user.id,
+                creator_id: user.uid,
                 title: formData.title,
                 description: formData.description,
                 event_type: eventType,
@@ -153,7 +153,7 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
             if (newEvent) {
                 const { error: joinError } = await supabase.from('event_participants').insert({
                     event_id: newEvent.id,
-                    user_id: user.id,
+                    user_id: user.uid,
                     status: 'joined'
                 });
 

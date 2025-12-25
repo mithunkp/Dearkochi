@@ -57,12 +57,12 @@ export default function NewStorePage() {
                 .insert({
                     ...formData,
                     category_id: formData.category_id ? parseInt(formData.category_id) : null,
-                    user_id: user.id,
+                    user_id: user.uid,
                 });
 
             if (error) throw error;
 
-            router.push('/profile');
+            router.push('/stores');
         } catch (err) {
             console.error('Error creating store:', err);
             setError(err instanceof Error ? err.message : 'Failed to create store');

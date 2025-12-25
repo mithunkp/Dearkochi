@@ -17,8 +17,8 @@ interface Place {
     // New fields
     highlights?: string[];
     timings?: string;
-    ticket_price?: string;
-    best_time_to_visit?: string;
+    entry_fee?: string;
+    best_time?: string;
     visited_count?: number;
 }
 
@@ -83,8 +83,8 @@ export default function AdminPlaces() {
                 is_known: currentPlace.is_known || false,
                 highlights: highlightsArray,
                 timings: currentPlace.timings,
-                ticket_price: currentPlace.ticket_price,
-                best_time_to_visit: currentPlace.best_time_to_visit
+                entry_fee: currentPlace.entry_fee,
+                best_time: currentPlace.best_time
             };
 
             let error;
@@ -322,8 +322,8 @@ export default function AdminPlaces() {
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Ticket Price</label>
                                     <input
-                                        value={currentPlace.ticket_price || ''}
-                                        onChange={e => setCurrentPlace({ ...currentPlace, ticket_price: e.target.value })}
+                                        value={currentPlace.entry_fee || ''}
+                                        onChange={e => setCurrentPlace({ ...currentPlace, entry_fee: e.target.value })}
                                         className="w-full border rounded-lg px-3 py-2 text-sm"
                                         placeholder="e.g. ₹50 / Free"
                                     />
@@ -331,8 +331,8 @@ export default function AdminPlaces() {
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-gray-500 mb-1">Best Time</label>
                                     <input
-                                        value={currentPlace.best_time_to_visit || ''}
-                                        onChange={e => setCurrentPlace({ ...currentPlace, best_time_to_visit: e.target.value })}
+                                        value={currentPlace.best_time || ''}
+                                        onChange={e => setCurrentPlace({ ...currentPlace, best_time: e.target.value })}
                                         className="w-full border rounded-lg px-3 py-2 text-sm"
                                         placeholder="e.g. Evening"
                                     />

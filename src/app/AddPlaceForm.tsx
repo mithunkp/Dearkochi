@@ -62,11 +62,15 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
     setLoading(true);
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('You must be logged in to add a place');
+
       // FIX: Change 'places' to 'user_places'
       const { error } = await supabase
         .from('user_places')  // ← CHANGE THIS LINE
         .insert([
           {
+            user_id: user.id, // Explicitly add user_id
             name: formData.name,
             description: formData.description,
             type: formData.type,
@@ -84,12 +88,16 @@ export default function AddPlaceForm({ onPlaceAdded, onClose }: AddPlaceFormProp
 
       onPlaceAdded();
       onClose();
-      onClose();
+      // onClose(); // Remove double call
       alert('Thanks for sharing your hidden gem! It will appear in the "Hidden Gems" tab.');
-    } catch (err: unknown) {
-      console.error('Error adding place:', err);
-      const e = err as { message?: string };
-      alert('Error adding place: ' + (e?.message ?? String(err)));
+    } catch (err: any) {
+      console.error('Error adding place (Full):', err);
+      console.error('Error Message:', err.message);
+      console.error('Error Code:', err.code);
+      console.error('Error Details:', err.details);
+      console.error('Error Hint:', err.hint);
+
+      alert(`Error adding place: ${err.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

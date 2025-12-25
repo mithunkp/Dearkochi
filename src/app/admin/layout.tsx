@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth-context';
 import {
     LayoutDashboard,
     MapPin,
@@ -14,58 +14,24 @@ import {
     Menu,
     X,
     AlertCircle,
-    Users
+    Users,
+    Store
 } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const router = useRouter();
     const pathname = usePathname();
-    const [loading, setLoading] = useState(true);
+    const { user, loading, signOut } = useAuth();
 
-    useEffect(() => {
-        // If we represent the login page, don't block
-        if (pathname === '/admin/login') {
-            setLoading(false);
-            return;
-        }
+    // Removed client-side auth guard to allow static admin session
+    // Middleware handles the security check now
 
-        // Simple check + safety timeout
-        const check = () => {
-            try {
-                const isAdmin = localStorage.getItem('dk_admin_session');
-                if (!isAdmin) {
-                    router.push('/admin/login');
-                } else {
-                    setLoading(false);
-                }
-            } catch (e) {
-                console.error("Auth check failed", e);
-                router.push('/admin/login');
-            }
-        };
-
-        check();
-    }, [router, pathname]);
-
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mb-4"></div>
-                <p>Loading Admin Panel...</p>
-                <button
-                    onClick={() => router.push('/admin/login')}
-                    className="mt-4 text-sm text-gray-500 hover:text-white underline"
-                >
-                    Stuck? Return to Login
-                </button>
-            </div>
-        );
-    }
-
-    const handleSignOut = () => {
-        localStorage.removeItem('dk_admin_session');
-        router.push('/admin/login');
+    const handleSignOut = async () => {
+        // Clear cookie call would be ideal here too, but for now just sign out firebase
+        await signOut();
+        // Force hard navigation to login to clear state
+        window.location.href = '/admin/login';
     };
 
     const menuItems = [
@@ -73,6 +39,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { icon: MapPin, label: 'Places', href: '/admin/places' },
         { icon: Tag, label: 'Classifieds', href: '/admin/classified' },
         { icon: Calendar, label: 'Events', href: '/admin/events' },
+        { icon: Store, label: 'Stores', href: '/admin/stores' },
         { icon: Users, label: 'Users', href: '/admin/users' },
         { icon: AlertCircle, label: 'Maintenance', href: '/admin/maintenance' },
     ];
@@ -80,6 +47,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (pathname === '/admin/login') {
         return <>{children}</>;
     }
+
 
     return (
         <div className="min-h-screen bg-gray-50 flex">
@@ -121,6 +89,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </nav>
 
                     <div className="p-4 border-t border-gray-800">
+                        <div className="px-4 py-3 mb-2 flex items-center gap-3">
+                            <img
+                                src={user?.photoURL || `https://ui-avatars.com/api/?name=Admin`}
+                                alt="User"
+                                className="w-8 h-8 rounded-full bg-gray-700"
+                            />
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-white truncate">{user?.displayName || 'Admin User'}</p>
+                                <p className="text-xs text-gray-500 truncate">{user?.email || 'admin@local'}</p>
+                            </div>
+                        </div>
                         <button
                             onClick={handleSignOut}
                             className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-red-400 transition-colors"

@@ -1,15 +1,21 @@
-"use client";
+'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from './supabase';
-import type { User } from '@supabase/supabase-js';
+import { auth, googleProvider } from './firebase';
+import {
+  User,
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut
+} from 'firebase/auth';
 
 type AuthContextType = {
   user: User | null;
   loading: boolean;
-  signIn: (email: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  getAccessToken: () => Promise<string>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,60 +23,44 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [mounted, setMounted] = useState<boolean>(false);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMounted(true);
-    let cleanedUp = false;
-
-    const init = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (cleanedUp) return;
-      setUser(data?.session?.user ?? null);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
       setLoading(false);
-    };
-
-    init();
-
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
     });
-    const subscription = data.subscription;
 
-    return () => {
-      cleanedUp = true;
-      subscription.unsubscribe();
-    };
+    return () => unsubscribe();
   }, []);
 
-  // Prevent hydration mismatch by not rendering children until mounted
-  if (!mounted) {
-    return null;
-  }
+  const signInWithGoogle = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error("Error signing in with Google", error);
+      throw error;
+    }
+  };
 
-  const signIn = async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/`,
-      },
-    });
-    if (error) throw error;
+  const signInWithEmail = async (email: string, password: string) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      console.error("Error signing in with Email", error);
+      throw error;
+    }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-  };
-
-  const getAccessToken = async () => {
-    const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token ?? '';
+    try {
+      await firebaseSignOut(auth);
+    } catch (error) {
+      console.error("Error signing out", error);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, getAccessToken }}>
+    <AuthContext.Provider value={{ user, loading, signInWithGoogle, signInWithEmail, signOut }}>
       {children}
     </AuthContext.Provider>
   );

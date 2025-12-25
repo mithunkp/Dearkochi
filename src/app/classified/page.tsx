@@ -79,12 +79,12 @@ export default function ClassifiedPage() {
             ]);
 
             if (adsRes.error) {
-                console.error('Error fetching ads:', adsRes.error);
+                console.error('Error fetching ads:', JSON.stringify(adsRes.error, null, 2));
                 if (adsRes.error.code === '42P01') {
                     alert('Classifieds tables not found. Please run classified_setup.sql');
                 }
             }
-            if (categoriesRes.error) console.error('Error fetching categories:', categoriesRes.error);
+            if (categoriesRes.error) console.error('Error fetching categories:', JSON.stringify(categoriesRes.error, null, 2));
 
             setAds(adsRes.data || []);
             setCategories(categoriesRes.data || []);

@@ -129,7 +129,7 @@ function DatePlannerContent() {
         setStickers([...stickers, { id, src: url, x, y, width: 120, height: 120 }]);
     };
 
-    const handleUploadSticker = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleUploadSticker = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
@@ -138,13 +138,33 @@ function DatePlannerContent() {
             return;
         }
 
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            if (ev.target?.result) {
-                addSticker(ev.target.result as string);
+        // Upload to Cloudinary
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', 'dearkochi_unsigned');
+
+        try {
+            const response = await fetch('https://api.cloudinary.com/v1_1/mithu/image/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText);
             }
-        };
-        reader.readAsDataURL(file);
+
+            const data = await response.json();
+            if (data.secure_url) {
+                addSticker(data.secure_url);
+            } else {
+                alert('Upload failed: No URL received.');
+            }
+        } catch (error) {
+            console.error('Error uploading sticker:', error);
+            alert('Failed to upload sticker. Please check your connection.');
+        }
+
         e.target.value = ""; // Reset input
     };
 
@@ -184,8 +204,6 @@ function DatePlannerContent() {
     const savePlan = async (isPublic: boolean) => {
         setIsSaving(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-
             if (!user) {
                 alert("You must be logged in to save plans.");
                 setIsSaving(false);
@@ -193,7 +211,7 @@ function DatePlannerContent() {
             }
 
             const planData = {
-                user_id: user.id,
+                user_id: user.uid, // Using Firebase User UID from useAuth()
                 title: title,
                 stops,
                 stickers,
@@ -262,7 +280,7 @@ function DatePlannerContent() {
                 <div className="p-4 md:p-10">
                     {user ? (
                         <PlanList
-                            userId={user.id}
+                            userId={user.uid}
                             onCreateNew={() => router.push('/date-planner?action=create')}
                             onSelectPlan={(id) => router.push(`/date-planner?id=${id}`)}
                         />

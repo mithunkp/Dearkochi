@@ -26,7 +26,7 @@ type StoreType = {
 export default function ProfilePage() {
     const { user, loading: authLoading, signOut } = useAuth();
     const [profile, setProfile] = useState<Profile | null>(null);
-    const [stores, setStores] = useState<StoreType[]>([]);
+
     const [loading, setLoading] = useState(true);
     const [fullName, setFullName] = useState('');
     const [updating, setUpdating] = useState(false);
@@ -34,7 +34,7 @@ export default function ProfilePage() {
     useEffect(() => {
         if (user) {
             fetchProfile();
-            fetchStores();
+
         } else if (!authLoading) {
             setLoading(false);
         }
@@ -46,7 +46,7 @@ export default function ProfilePage() {
             const { data, error } = await supabase
                 .from('profiles')
                 .select('*')
-                .eq('id', user.id)
+                .eq('id', user.uid)
                 .single();
 
             if (error && error.code !== 'PGRST116') {
@@ -60,7 +60,7 @@ export default function ProfilePage() {
                 // Handle case where profile doesn't exist (e.g. created before trigger)
                 // For now, just set basic info from auth user
                 setProfile({
-                    id: user.id,
+                    id: user.uid,
                     email: user.email || '',
                     full_name: null,
                     avatar_url: null
@@ -73,26 +73,14 @@ export default function ProfilePage() {
         }
     };
 
-    const fetchStores = async () => {
-        if (!user) return;
-        const { data, error } = await supabase
-            .from('stores')
-            .select('*')
-            .eq('user_id', user.id);
 
-        if (error) {
-            console.error('Error fetching stores:', error);
-        } else {
-            setStores(data || []);
-        }
-    };
 
     const updateProfile = async () => {
         if (!user) return;
         setUpdating(true);
         try {
             const updates = {
-                id: user.id,
+                id: user.uid,
                 full_name: fullName,
                 updated_at: new Date().toISOString(),
             };
@@ -141,27 +129,17 @@ export default function ProfilePage() {
             <Header />
 
             <main className="flex-1 px-8 py-10 max-w-4xl mx-auto w-full">
-                <div className="flex items-center gap-4 mb-8">
-                    <Link href="/" className="w-10 h-10 rounded-full bg-white/60 backdrop-blur-sm border border-white/40 flex items-center justify-center text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">
-                        <ArrowLeft size={20} />
-                    </Link>
-                    <div>
-                        <h1 className="text-3xl font-bold text-slate-800">Your Profile</h1>
-                        <p className="text-sm text-slate-500 font-medium">Manage your account and listings</p>
+                <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-4">
+                        <Link href="/" className="w-10 h-10 rounded-full bg-white/60 backdrop-blur-sm border border-white/40 flex items-center justify-center text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">
+                            <ArrowLeft size={20} />
+                        </Link>
+                        <div>
+                            <h1 className="text-3xl font-bold text-slate-800">Your Profile</h1>
+                            <p className="text-sm text-slate-500 font-medium">Manage your account and listings</p>
+                        </div>
                     </div>
-                </div>
 
-                <div className="absolute top-10 right-8">
-                    <button
-                        onClick={() => {
-                            if (confirm('Are you sure you want to sign out?')) {
-                                signOut();
-                            }
-                        }}
-                        className="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors"
-                    >
-                        Sign Out
-                    </button>
                 </div>
 
                 <div className="space-y-8">
@@ -203,35 +181,7 @@ export default function ProfilePage() {
                         </div>
                     </GlassCard>
 
-                    <GlassCard>
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                <Store className="text-green-500" size={24} /> Your Stores
-                            </h2>
-                            <Link href="/stores/new" className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-bold flex items-center gap-2 transition-colors shadow-lg shadow-green-200">
-                                <Plus size={16} /> Add New Store
-                            </Link>
-                        </div>
 
-                        {stores.length === 0 ? (
-                            <div className="text-center py-8 bg-slate-50/50 rounded-xl border border-slate-100 border-dashed">
-                                <p className="text-slate-500 italic text-sm">You haven&apos;t posted any stores yet.</p>
-                            </div>
-                        ) : (
-                            <div className="grid gap-4 md:grid-cols-2">
-                                {stores.map((store) => (
-                                    <div key={store.id} className="bg-white/50 border border-white/60 rounded-xl p-4 hover:shadow-md transition-all">
-                                        <h3 className="font-bold text-slate-800 text-lg mb-1">{store.name}</h3>
-                                        <div className="flex items-center text-xs text-slate-500 mb-2 font-medium">
-                                            <MapPin size={12} className="mr-1" />
-                                            {store.location || 'No location'}
-                                        </div>
-                                        <p className="text-slate-600 text-sm line-clamp-2">{store.description}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </GlassCard>
                 </div>
             </main>
         </div>

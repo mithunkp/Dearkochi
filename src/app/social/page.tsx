@@ -21,70 +21,17 @@ export default function SocialPage() {
                     </div>
                 </div>
 
-                <GlassCard>
-                    <div className="text-center mb-8">
-                        <p className="text-slate-500 mb-6">Share your experiences and photos with the community.</p>
-                        <button className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 font-medium transition-colors">
-                            Create Post
-                        </button>
+                <GlassCard className="flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
+                    <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mb-6 text-purple-500">
+                        <Share2 size={40} />
                     </div>
-
-                    <div className="space-y-6">
-                        {/* Placeholder for social feed */}
-                        <div className="bg-white/50 rounded-xl p-5 border border-white/40">
-                            <div className="flex items-center justify-between mb-3">
-                                <div className="flex items-center">
-                                    <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center font-bold text-purple-600 mr-3 border border-purple-200">A</div>
-                                    <div>
-                                        <div className="font-bold text-slate-800 text-sm">Anjali Menon</div>
-                                        <div className="text-slate-400 text-xs">2h ago</div>
-                                    </div>
-                                </div>
-                                <button className="text-slate-400 hover:text-slate-600">
-                                    <MoreHorizontal size={18} />
-                                </button>
-                            </div>
-                            <p className="text-slate-700 text-sm leading-relaxed mb-4">Just visited the Biennale! Absolutely stunning art installations this year. <span className="text-blue-500">#KochiBiennale</span> <span className="text-blue-500">#Art</span></p>
-                            <div className="flex items-center gap-6 pt-3 border-t border-slate-100">
-                                <button className="flex items-center gap-2 text-slate-500 hover:text-red-500 text-xs font-medium transition-colors">
-                                    <Heart size={16} /> 24
-                                </button>
-                                <button className="flex items-center gap-2 text-slate-500 hover:text-blue-500 text-xs font-medium transition-colors">
-                                    <MessageCircle size={16} /> 5
-                                </button>
-                                <button className="flex items-center gap-2 text-slate-500 hover:text-green-500 text-xs font-medium transition-colors ml-auto">
-                                    <Share2 size={16} /> Share
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="bg-white/50 rounded-xl p-5 border border-white/40">
-                            <div className="flex items-center justify-between mb-3">
-                                <div className="flex items-center">
-                                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center font-bold text-blue-600 mr-3 border border-blue-200">R</div>
-                                    <div>
-                                        <div className="font-bold text-slate-800 text-sm">Rahul K</div>
-                                        <div className="text-slate-400 text-xs">5h ago</div>
-                                    </div>
-                                </div>
-                                <button className="text-slate-400 hover:text-slate-600">
-                                    <MoreHorizontal size={18} />
-                                </button>
-                            </div>
-                            <p className="text-slate-700 text-sm leading-relaxed mb-4">Best place for Biryani in Fort Kochi? Suggestions please! 🍛</p>
-                            <div className="flex items-center gap-6 pt-3 border-t border-slate-100">
-                                <button className="flex items-center gap-2 text-slate-500 hover:text-red-500 text-xs font-medium transition-colors">
-                                    <Heart size={16} /> 12
-                                </button>
-                                <button className="flex items-center gap-2 text-slate-500 hover:text-blue-500 text-xs font-medium transition-colors">
-                                    <MessageCircle size={16} /> 8
-                                </button>
-                                <button className="flex items-center gap-2 text-slate-500 hover:text-green-500 text-xs font-medium transition-colors ml-auto">
-                                    <Share2 size={16} /> Share
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                    <h2 className="text-2xl font-bold text-slate-800 mb-2">Community Coming Soon</h2>
+                    <p className="text-slate-500 max-w-md mx-auto mb-8">
+                        We're building a space for the Kochi community to connect, share, and grow together. Stay tuned!
+                    </p>
+                    <Link href="/" className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 shadow-lg shadow-purple-200 font-medium transition-colors">
+                        Back to Home
+                    </Link>
                 </GlassCard>
             </main>
         </div>

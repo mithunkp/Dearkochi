@@ -47,7 +47,7 @@ export default function MyAdsPage() {
           icon
         )
       `)
-            .eq('user_id', user.id)
+            .eq('user_id', user.uid)
             .neq('status', 'deleted')
             .order('created_at', { ascending: false });
 

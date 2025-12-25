@@ -8,6 +8,7 @@ interface UserDisplayProps {
     className?: string;
     showFlair?: boolean;
     fallback?: string;
+    hideName?: boolean;
 }
 
 /**
@@ -21,7 +22,8 @@ export function UserDisplay({
     full_name,
     className = '',
     showFlair = true,
-    fallback = 'Anonymous'
+    fallback = 'Anonymous',
+    hideName = false
 }: UserDisplayProps) {
     // Strictly prefer nickname. If not available, use fallback.
     // Ensure we do NOT show full_name or email parts for public visibility as per requirement.
@@ -29,9 +31,11 @@ export function UserDisplay({
 
     return (
         <div className={`flex flex-col items-start ${className}`}>
-            <span className="font-medium leading-none">
-                {displayName}
-            </span>
+            {!hideName && (
+                <span className="font-medium leading-none">
+                    {displayName}
+                </span>
+            )}
             {showFlair && flair && (
                 <span className="text-[10px] text-gray-500 font-medium mt-0.5 px-1 bg-gray-100 rounded-md border border-gray-200">
                     {flair}

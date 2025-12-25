@@ -3,8 +3,8 @@
 ALTER TABLE user_places
 ADD COLUMN IF NOT EXISTS highlights TEXT[] DEFAULT '{}',
 ADD COLUMN IF NOT EXISTS timings TEXT,
-ADD COLUMN IF NOT EXISTS ticket_price TEXT,
-ADD COLUMN IF NOT EXISTS best_time_to_visit TEXT,
+ADD COLUMN IF NOT EXISTS entry_fee TEXT,
+ADD COLUMN IF NOT EXISTS best_time TEXT,
 ADD COLUMN IF NOT EXISTS visited_count INTEGER DEFAULT 0;
 
 -- Function to increment visited count

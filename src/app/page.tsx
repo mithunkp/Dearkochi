@@ -43,7 +43,7 @@ export default function DearKochi() {
     { id: 'places', label: 'Must Visit', icon: MapPin, value: 'Top Spots', unit: '', color: 'text-orange-500', bg: 'bg-orange-100' },
     { id: 'transport', label: 'Transport', icon: Bus, value: 'Metro/Bus', unit: '', color: 'text-blue-500', bg: 'bg-blue-100' },
     { id: 'emergency', label: 'Emergency', icon: AlertTriangle, value: 'Help', unit: '', color: 'text-red-500', bg: 'bg-red-100' },
-    { id: 'social', label: 'Social', icon: Users, value: 'Connections', unit: '', color: 'text-purple-500', bg: 'bg-purple-100' },
+    { id: 'social', label: 'Social', icon: Users, value: 'Coming Soon', unit: '', color: 'text-purple-500', bg: 'bg-purple-100' },
     { id: 'classified', label: 'Classifieds', icon: Tag, value: 'Buy/Sell', unit: '', color: 'text-teal-500', bg: 'bg-teal-100' },
     { id: 'stores', label: 'Stores', icon: Store, value: 'Shop', unit: '', color: 'text-indigo-500', bg: 'bg-indigo-100' },
   ];
@@ -58,7 +58,14 @@ export default function DearKochi() {
         <Header />
 
         <main className="flex-1 px-8 py-10 max-w-5xl mx-auto w-full">
-          <h1 className="text-5xl font-bold mb-8 text-slate-800">Welcome to Dear Kochi</h1>
+          <div className="mb-10 text-center md:text-left">
+            <h1 className="text-5xl font-black mb-3 text-slate-800 tracking-tight">
+              Explore <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500">Kochi</span>
+            </h1>
+            <p className="text-xl text-slate-600 max-w-2xl font-medium leading-relaxed">
+              Your ultimate guide to <strong className="text-slate-800">Cochin</strong> (Ernakulam). Discover top tourist places, local events, news, and classifieds in the heart of Kerala.
+            </p>
+          </div>
 
           {/* Stats Grid (Navigation) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">

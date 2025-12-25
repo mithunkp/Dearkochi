@@ -68,7 +68,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
 
         const init = async () => {
             // Set creator status
-            const isEventCreator = user?.id === event.creator_id;
+            const isEventCreator = user?.uid === event.creator_id;
             if (isMounted) {
                 setIsCreator(isEventCreator);
             }
@@ -78,7 +78,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 const { data: profile } = await supabase
                     .from('profiles')
                     .select('nickname')
-                    .eq('id', user.id)
+                    .eq('id', user.uid)
                     .single();
 
                 if (isMounted) {
@@ -93,7 +93,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                     .from('event_participants')
                     .select('status')
                     .eq('event_id', event.id)
-                    .eq('user_id', user.id)
+                    .eq('user_id', user.uid)
                     .single();
 
                 userHasJoined = data?.status === 'joined';
@@ -145,12 +145,12 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                                 .from('event_participants')
                                 .select('status')
                                 .eq('event_id', event.id)
-                                .eq('user_id', user?.id || '')
+                                .eq('user_id', user?.uid || '')
                                 .single();
 
                             const hasAccess = !event.is_private ||
                                 participantData?.status === 'joined' ||
-                                user?.id === event.creator_id;
+                                user?.uid === event.creator_id;
 
                             if (hasAccess) {
                                 fetchMessageSender(payload.new as any);
@@ -259,7 +259,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 .order('created_at', { ascending: true });
 
             if (error) {
-                console.error('Supabase query error:', error);
+                console.error('Supabase query error (messages):', JSON.stringify(error, null, 2));
                 return;
             }
 
@@ -306,7 +306,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
             .eq('status', 'joined');
 
         if (error) {
-            console.error('Error fetching participants:', error);
+            console.error('Error fetching participants:', JSON.stringify(error, null, 2));
             return;
         }
 
@@ -351,7 +351,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
             .eq('status', 'pending');
 
         if (error) {
-            console.error('Error fetching requests:', error);
+            console.error('Error fetching requests:', JSON.stringify(error, null, 2));
             return;
         }
 
@@ -380,7 +380,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
             .from('event_participants')
             .select('status')
             .eq('event_id', event.id)
-            .eq('user_id', user.id)
+            .eq('user_id', user.uid)
             .single();
 
         setHasJoined(data?.status === 'joined');
@@ -397,11 +397,11 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
 
         // Check nickname again
         if (!userNickname) {
-            const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
+            const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.uid).single();
             if (!profile?.nickname) {
                 const nick = prompt('Please set a nickname to join events:');
                 if (!nick || !nick.trim()) return;
-                const { error: updateError } = await supabase.from('profiles').update({ nickname: nick.trim() }).eq('id', user.id);
+                const { error: updateError } = await supabase.from('profiles').update({ nickname: nick.trim() }).eq('id', user.uid);
                 if (updateError) {
                     alert('Failed to set nickname.');
                     return;
@@ -417,7 +417,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
         const status = event.requires_approval ? 'pending' : 'joined';
         const { error } = await supabase.from('event_participants').upsert({
             event_id: event.id,
-            user_id: user.id,
+            user_id: user.uid,
             status: status,
             request_message: event.requires_approval ? joinMessage : null
         });
@@ -491,7 +491,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
     const handleLeave = async () => {
         if (!user) return;
         if (confirm('Are you sure you want to leave?')) {
-            const { error } = await supabase.from('event_participants').delete().eq('event_id', event.id).eq('user_id', user.id);
+            const { error } = await supabase.from('event_participants').delete().eq('event_id', event.id).eq('user_id', user.uid);
             if (!error) {
                 setHasJoined(false);
                 onUpdate();
@@ -500,7 +500,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
     };
 
     const handleDeleteEvent = async () => {
-        if (!user || user.id !== event.creator_id) return;
+        if (!user || user.uid !== event.creator_id) return;
         if (confirm('Are you sure you want to delete this event? This cannot be undone.')) {
             const { error } = await supabase.from('local_events').delete().eq('id', event.id);
 
@@ -528,7 +528,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
         const tempId = `temp-${Date.now()}`;
         const optimisticMessage: Message = {
             id: tempId,
-            user_id: user.id,
+            user_id: user.uid,
             content: messageContent,
             created_at: new Date().toISOString(),
             profiles: {
@@ -544,7 +544,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
         try {
             const { error } = await supabase.from('event_messages').insert({
                 event_id: event.id,
-                user_id: user.id,
+                user_id: user.uid,
                 content: messageContent
             });
 
@@ -778,7 +778,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                                                     />
                                                 </div>
                                             </div>
-                                            {isCreator && p.user_id !== user?.id && (
+                                            {isCreator && p.user_id !== user?.uid && (
                                                 <button type="button" onClick={() => handleRemoveUser(p.user_id)} className="text-red-400 hover:text-red-600 p-2">
                                                     <Trash2 size={16} />
                                                 </button>
@@ -794,7 +794,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                                 <>
                                     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#f8f9fc]/50">
                                         {messages.map((msg) => {
-                                            const isMe = msg.user_id === user?.id;
+                                            const isMe = msg.user_id === user?.uid;
                                             return (
                                                 <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${msg.skipAnimation ? '' : 'animate-slide-in'}`}>
                                                     <div className={`max-w-[80%] ${isMe

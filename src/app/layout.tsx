@@ -12,28 +12,31 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL('https://dearkochi.com'),
   title: {
-    template: '%s | Dear Kochi',
-    default: 'Dear Kochi - Your Complete Kochi Experience Hub',
+    template: '%s | Dear Kochi - The Ultimate Guide',
+    default: 'Dear Kochi - Kochi\'s #1 City Guide & Local Portal',
   },
-  description: "Discover Kochi like never before! Explore tourist places, classifieds, local events, transport info, weather updates, and emergency services all in one place.",
+  description: "Explore Kochi (Cochin) with the best local guide. Find tourist places in Kochi, latest events, classifieds, weather, and transport info. Your gateway to Ernakulam and Kerala tourism.",
   keywords: [
     "Dear Kochi",
     "Kochi",
     "Cochin",
     "Ernakulam",
-    "കൊച്ചി",
-    "Kerala",
-    "Kochi guide",
-    "Cochin tourism",
+    "Kochi tourism",
+    "places to visit in Kochi",
     "Kochi city guide",
-    "Kochi classifieds",
-    "Kochi tourist places",
-    "Kochi transport",
-    "Kochi weather",
     "Kochi events",
+    "Kochi classifieds",
+    "Kochi travel guide",
+    "Kochi metro",
+    "Kochi weather",
+    "things to do in Kochi",
+    "Fort Kochi",
+    "Mattancherry",
+    "Marine Drive Kochi",
     "Kerala tourism",
+    "Cochin guide"
   ],
-  authors: [{ name: 'Dear Kochi' }],
+  authors: [{ name: 'Dear Kochi Team' }],
   creator: 'Dear Kochi',
   publisher: 'Dear Kochi',
   alternates: {
@@ -44,8 +47,8 @@ export const metadata: Metadata = {
     locale: 'en_IN',
     url: 'https://dearkochi.com',
     siteName: 'Dear Kochi',
-    title: 'Dear Kochi - Your Complete Kochi Experience Hub',
-    description: 'Discover Kochi like never before! Explore tourist places, classifieds, local events, transport info, weather updates, and emergency services all in one place.',
+    title: 'Dear Kochi - Your Complete Kochi City Guide',
+    description: 'Discover the best of Kochi (Cochin)! From hidden tourist gems and local events to classifieds and essential city info. Experience Ernakulam like a local.',
     images: [
       {
         url: '/logo.png',
@@ -57,8 +60,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Dear Kochi - Your Complete Kochi Experience Hub',
-    description: 'Discover Kochi like never before! Explore tourist places, classifieds, local events, transport info, and more.',
+    title: 'Dear Kochi - Your Complete Kochi City Guide',
+    description: 'Explore Kochi\'s best kept secrets. Tourist places, events, news, and more in Cochin (Ernakulam).',
     images: ['/logo.png'],
   },
   robots: {
@@ -85,7 +88,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <body
         className={`${inter.variable} antialiased`}
         suppressHydrationWarning
