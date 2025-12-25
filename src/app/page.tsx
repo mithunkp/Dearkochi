@@ -58,7 +58,7 @@ export default function DearKochi() {
         <Header />
 
         <main className="flex-1 px-8 py-10 max-w-5xl mx-auto w-full">
-          <div className="mb-10 text-center md:text-left">
+          <div className="mb-10 text-center md:text-left sr-only">
             <h1 className="text-5xl font-black mb-3 text-slate-800 tracking-tight">
               Explore <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500">Kochi</span>
             </h1>
