@@ -75,7 +75,7 @@ export default function MaintenanceSettingsPage() {
                     bg_color: settings.bg_color,
                     text_color: settings.text_color,
                     updated_at: new Date().toISOString(),
-                    updated_by: user.id
+                    updated_by: user.uid
                 })
                 .eq('id', 1); // Singleton row assumption
 
