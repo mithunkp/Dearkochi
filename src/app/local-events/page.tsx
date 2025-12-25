@@ -107,7 +107,7 @@ export default function LocalEventsPage() {
 
     const filteredEvents = events.filter(event => {
         if (filter === 'all') return true;
-        if (filter === 'my-events') return user && event.creator_id === user.id;
+        if (filter === 'my-events') return user && event.creator_id === user.uid;
         return event.event_type === filter;
     });
 
