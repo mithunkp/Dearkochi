@@ -37,6 +37,9 @@ export default function DearKochi() {
 
   useEffect(() => {
     fetchWeather();
+    // Refresh weather every 5 minutes
+    const interval = setInterval(fetchWeather, 300000);
+    return () => clearInterval(interval);
   }, []);
 
   const menuItems = [

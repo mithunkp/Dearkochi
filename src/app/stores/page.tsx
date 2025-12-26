@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Star, MapPin, Plus, ArrowLeft, Store as StoreIcon, ArrowRight } from 'lucide-react';
+import { Star, MapPin, Plus, ArrowLeft, Store as StoreIcon, ArrowRight, Share2, Search, Filter } from 'lucide-react';
 
 import { Header } from '@/components/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { ShareModal } from '@/components/ui/ShareModal';
 
 type Category = {
     id: number;
@@ -20,6 +21,7 @@ type Store = {
     description: string | null;
     location: string | null;
     category_id: number | null;
+    image_url: string | null;
     categories: {
         name: string;
     } | null;
@@ -30,7 +32,12 @@ export default function StoresPage() {
     const [categories, setCategories] = useState<Category[]>([]);
     const [ratings, setRatings] = useState<Record<number, number>>({});
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
+    const [searchQuery, setSearchQuery] = useState('');
     const [loading, setLoading] = useState(true);
+    const [shareConfig, setShareConfig] = useState<{ isOpen: boolean; item: Store | null }>({
+        isOpen: false,
+        item: null
+    });
 
     useEffect(() => {
         fetchData();
@@ -96,86 +103,145 @@ export default function StoresPage() {
         }
     };
 
-    const filteredStores = selectedCategory === 'all'
-        ? stores
-        : stores.filter(store => store.category_id?.toString() === selectedCategory);
+    const filteredStores = stores.filter(store => {
+        const matchesCategory = selectedCategory === 'all' || store.category_id?.toString() === selectedCategory;
+        const matchesSearch = store.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            store.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            store.location?.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesCategory && matchesSearch;
+    });
 
     if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
     return (
-        <div className="min-h-screen flex flex-col">
+        <div className="min-h-screen flex flex-col bg-slate-50/50">
             <Header />
 
-            <main className="flex-1 px-8 py-10 max-w-7xl mx-auto w-full">
-                <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-                    <div className="flex items-center gap-4">
-                        <Link href="/" className="w-10 h-10 rounded-full bg-white/60 backdrop-blur-sm border border-white/40 flex items-center justify-center text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">
-                            <ArrowLeft size={20} />
+            <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {/* Header Section */}
+                <div className="flex flex-col gap-6 mb-8">
+                    <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                        <Link href="/" className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors text-sm font-medium">
+                            <ArrowLeft size={16} /> Back to Home
                         </Link>
-                        <div>
-                            <h1 className="text-3xl font-bold text-slate-800">Stores & Services</h1>
-                            <p className="text-sm text-slate-500 font-medium">Discover the best local businesses</p>
+                        <div className="flex items-center gap-3 w-full md:w-auto">
+                            <div className="relative flex-1 md:w-96">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                    <Search size={18} />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Search stores..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm text-sm"
+                                />
+                            </div>
+                            <Link
+                                href="/stores/new"
+                                className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 shadow-md shadow-slate-200 text-sm font-medium transition-all hover:scale-105 active:scale-95 flex items-center gap-2 whitespace-nowrap"
+                            >
+                                <Plus size={16} />
+                                <span>Add Store</span>
+                            </Link>
                         </div>
                     </div>
-                    <Link href="/stores/new" className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 font-medium transition-colors flex items-center gap-2">
-                        <Plus size={18} /> Add Your Store
-                    </Link>
-                </div>
 
-                <div className="flex gap-3 mb-10 overflow-x-auto pb-4 scrollbar-hide">
-                    <button
-                        onClick={() => setSelectedCategory('all')}
-                        className={`px-5 py-2.5 rounded-full whitespace-nowrap text-sm font-medium transition-all ${selectedCategory === 'all'
-                            ? 'bg-slate-800 text-white shadow-md'
-                            : 'bg-white/60 text-slate-600 border border-white/40 hover:bg-white'
-                            }`}
-                    >
-                        All Categories
-                    </button>
-                    {categories.map((cat) => (
+                    {/* Filter Bar */}
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                         <button
-                            key={cat.id}
-                            onClick={() => setSelectedCategory(cat.id.toString())}
-                            className={`px-5 py-2.5 rounded-full whitespace-nowrap text-sm font-medium transition-all ${selectedCategory === cat.id.toString()
-                                ? 'bg-slate-800 text-white shadow-md'
-                                : 'bg-white/60 text-slate-600 border border-white/40 hover:bg-white'
+                            onClick={() => setSelectedCategory('all')}
+                            className={`px-3 py-1.5 rounded-lg whitespace-nowrap text-xs font-semibold transition-all flex items-center gap-1.5 ${selectedCategory === 'all'
+                                ? 'bg-slate-900 text-white shadow-md'
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
                                 }`}
                         >
-                            {cat.name}
+                            <Filter size={12} /> All
                         </button>
-                    ))}
+                        {categories.map((cat) => (
+                            <button
+                                key={cat.id}
+                                onClick={() => setSelectedCategory(cat.id.toString())}
+                                className={`px-3 py-1.5 rounded-lg whitespace-nowrap text-xs font-medium transition-all ${selectedCategory === cat.id.toString()
+                                    ? 'bg-blue-600 text-white shadow-md'
+                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                    }`}
+                            >
+                                {cat.name}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {/* Grid */}
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                     {filteredStores.map((store) => (
-                        <Link href={`/stores/${store.id}`} key={store.id} className="group">
-                            <GlassCard className="h-full flex flex-col relative overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-                                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <Link href={`/stores/${store.id}`} key={store.id} className="group block h-full">
+                            <GlassCard className="h-full flex flex-col relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 p-0 rounded-xl">
+                                {/* Image Section */}
+                                <div className="relative w-full aspect-video bg-slate-100 overflow-hidden">
+                                    <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-t from-black/50 via-transparent to-transparent z-10 opacity-60" />
 
-                                <div className="flex justify-between items-start mb-3">
-                                    <h3 className="font-bold text-xl text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">{store.name}</h3>
-                                    {store.categories && (
-                                        <span className="text-[10px] px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-full text-slate-500 font-semibold uppercase tracking-wider">
-                                            {store.categories.name}
-                                        </span>
+                                    <button
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setShareConfig({ isOpen: true, item: store });
+                                        }}
+                                        className="absolute top-2 right-2 z-20 w-7 h-7 bg-white/20 backdrop-blur-md text-white hover:bg-white hover:text-blue-600 rounded-full flex items-center justify-center transition-colors border border-white/30"
+                                    >
+                                        <Share2 size={14} />
+                                    </button>
+
+                                    {store.image_url ? (
+                                        <Image
+                                            src={store.image_url}
+                                            alt={store.name}
+                                            fill
+                                            className="object-cover transition-transform duration-700 group-hover:scale-105"
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-slate-300 bg-slate-50">
+                                            <StoreIcon size={32} />
+                                        </div>
                                     )}
-                                </div>
 
-                                <div className="flex items-center gap-1 mb-4">
-                                    <Star className="text-yellow-400 fill-yellow-400" size={16} />
-                                    <span className="font-bold text-slate-900">{ratings[store.id] ? ratings[store.id].toFixed(1) : 'New'}</span>
-                                </div>
-
-                                <p className="text-slate-600 text-sm mb-6 line-clamp-2 flex-grow leading-relaxed">{store.description}</p>
-
-                                <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-100">
-                                    <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                                        <MapPin size={14} />
-                                        <span className="truncate max-w-[150px]">{store.location || 'No location'}</span>
+                                    <div className="absolute bottom-2 left-2 z-20 flex items-center gap-2">
+                                        <div className="flex items-center gap-1 px-1.5 py-0.5 bg-yellow-400 text-yellow-950 rounded text-[10px] font-bold shadow-sm">
+                                            <Star size={10} className="fill-yellow-950" />
+                                            {ratings[store.id] ? ratings[store.id].toFixed(1) : 'New'}
+                                        </div>
                                     </div>
-                                    <span className="text-blue-600 text-xs font-bold group-hover:translate-x-1 transition-transform flex items-center gap-1">
-                                        View <ArrowRight size={12} />
-                                    </span>
+                                </div>
+
+                                {/* Content Section */}
+                                <div className="p-4 flex flex-col flex-grow">
+                                    <div className="flex justify-between items-start mb-1">
+                                        <h3 className="font-bold text-base text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">
+                                            {store.name}
+                                        </h3>
+                                        {store.categories && (
+                                            <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">
+                                                {store.categories.name}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium mb-2">
+                                        <MapPin size={12} className="text-slate-400" />
+                                        <span className="truncate">{store.location || 'No location'}</span>
+                                    </div>
+
+                                    <p className="text-slate-600 text-xs mb-3 line-clamp-2 leading-relaxed flex-grow">
+                                        {store.description}
+                                    </p>
+
+                                    <div className="pt-3 border-t border-slate-100 mt-auto flex items-center justify-between">
+                                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+                                            View Details
+                                        </span>
+                                        <ArrowRight size={14} className="text-blue-600 group-hover:translate-x-1 transition-transform" />
+                                    </div>
                                 </div>
                             </GlassCard>
                         </Link>
@@ -183,15 +249,28 @@ export default function StoresPage() {
                 </div>
 
                 {filteredStores.length === 0 && (
-                    <div className="text-center py-20">
-                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                            <StoreIcon size={32} />
+                    <div className="text-center py-20 bg-white/50 backdrop-blur-sm rounded-3xl border border-white/60">
+                        <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-500 animate-pulse">
+                            <Search size={32} />
                         </div>
-                        <h3 className="text-xl font-bold text-slate-900 mb-2">No stores found</h3>
-                        <p className="text-slate-500">Try selecting a different category or add your own store.</p>
+                        <h3 className="text-2xl font-bold text-slate-900 mb-2">No stores found</h3>
+                        <p className="text-slate-500 max-w-md mx-auto">
+                            We couldn&apos;t find any stores matching your search. Try adjusting your filters or search terms.
+                        </p>
                     </div>
                 )}
             </main>
+
+            {shareConfig.item && (
+                <ShareModal
+                    isOpen={shareConfig.isOpen}
+                    onClose={() => setShareConfig({ ...shareConfig, isOpen: false })}
+                    title={shareConfig.item.name}
+                    url={`${typeof window !== 'undefined' ? window.location.origin : ''}/stores/${shareConfig.item.id}`}
+                    type="store"
+                    data={shareConfig.item}
+                />
+            )}
         </div>
     );
 }

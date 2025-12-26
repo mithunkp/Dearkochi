@@ -19,11 +19,13 @@ import {
     Sofa,
     Shirt,
     MoreHorizontal,
-    Laptop
+    Laptop,
+    Share2
 } from 'lucide-react';
 
 import { Header } from '@/components/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { ShareModal } from '@/components/ui/ShareModal';
 
 type Category = {
     id: number;
@@ -53,6 +55,10 @@ export default function ClassifiedPage() {
     const [categories, setCategories] = useState<Category[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [loading, setLoading] = useState(true);
+    const [shareConfig, setShareConfig] = useState<{ isOpen: boolean; item: Ad | null }>({
+        isOpen: false,
+        item: null
+    });
 
     useEffect(() => {
         fetchData();
@@ -191,6 +197,7 @@ export default function ClassifiedPage() {
                                             {ad.ad_type}
                                         </span>
                                     </div>
+
                                 </div>
 
                                 <div className="p-4 flex flex-col flex-grow">
@@ -209,6 +216,17 @@ export default function ClassifiedPage() {
                                             <Calendar size={12} />
                                             {new Date(ad.created_at).toLocaleDateString()}
                                         </span>
+                                        <button
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setShareConfig({ isOpen: true, item: ad });
+                                            }}
+                                            className="ml-2 w-8 h-8 bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-blue-600 rounded-lg flex items-center justify-center transition-colors"
+                                            title="Share Ad"
+                                        >
+                                            <Share2 size={16} />
+                                        </button>
                                     </div>
                                 </div>
                             </GlassCard>
@@ -229,6 +247,17 @@ export default function ClassifiedPage() {
                     </div>
                 )}
             </main>
+
+            {shareConfig.item && (
+                <ShareModal
+                    isOpen={shareConfig.isOpen}
+                    onClose={() => setShareConfig({ ...shareConfig, isOpen: false })}
+                    title={shareConfig.item.title}
+                    url={`${typeof window !== 'undefined' ? window.location.origin : ''}/classified/${shareConfig.item.id}`}
+                    type="classified"
+                    data={shareConfig.item}
+                />
+            )}
         </div>
     );
 }

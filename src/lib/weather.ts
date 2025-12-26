@@ -35,11 +35,11 @@ export async function getWeather(): Promise<WeatherData | null> {
         const [weatherRes, aqiRes] = await Promise.all([
             fetch(
                 'https://api.open-meteo.com/v1/forecast?latitude=9.9312&longitude=76.2673&current=temperature_2m,relative_humidity_2m,is_day,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m,uv_index&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max&timezone=auto',
-                { next: { revalidate: 3600 } }
+                { next: { revalidate: 300 } }
             ),
             fetch(
                 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=9.9312&longitude=76.2673&current=us_aqi&hourly=us_aqi',
-                { next: { revalidate: 3600 } }
+                { next: { revalidate: 300 } }
             )
         ]);
 

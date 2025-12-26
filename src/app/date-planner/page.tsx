@@ -9,6 +9,8 @@ import DateEditor from '@/components/date-planner/DateEditor';
 import VisualSheet from '@/components/date-planner/VisualSheet';
 import PlanList from '@/components/date-planner/PlanList';
 import { useAuth } from '@/lib/auth-context';
+import { ShareModal } from '@/components/ui/ShareModal';
+import { Share2 } from 'lucide-react';
 
 // Default stickers
 const stickerImages = [
@@ -53,6 +55,9 @@ function DatePlannerContent() {
     const [isSaving, setIsSaving] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const sheetRef = useRef<HTMLDivElement>(null);
+    const [shareConfig, setShareConfig] = useState<{ isOpen: boolean }>({
+        isOpen: false
+    });
 
     // Load plan if ID exists
     useEffect(() => {
@@ -252,6 +257,10 @@ function DatePlannerContent() {
         }
     };
 
+    const handleShare = () => {
+        setShareConfig({ isOpen: true });
+    };
+
     const deletePlan = async () => {
         if (!planId) return;
         if (!confirm("Are you sure you want to delete this plan? This action cannot be undone.")) return;
@@ -346,6 +355,7 @@ function DatePlannerContent() {
                     onAddSticker={() => addSticker()}
                     onUploadSticker={handleUploadSticker}
                     onDownload={downloadSheet}
+                    onShare={handleShare}
                     onSave={savePlan}
                     onDelete={planId ? deletePlan : undefined}
                     isSaving={isSaving}
@@ -362,6 +372,22 @@ function DatePlannerContent() {
                     sheetRef={sheetRef}
                 />
             </div>
+
+            {/* Share Modal */}
+            {shareConfig.isOpen && (
+                <ShareModal
+                    isOpen={shareConfig.isOpen}
+                    onClose={() => setShareConfig({ ...shareConfig, isOpen: false })}
+                    title={title}
+                    url={`${typeof window !== 'undefined' ? window.location.origin : ''}/date-planner?id=${planId || ''}`}
+                    type="date-plan"
+                    data={{
+                        stops,
+                        stickers,
+                        title
+                    }}
+                />
+            )}
         </div>
     );
 }

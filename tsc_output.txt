@@ -1,0 +1,2 @@
+src/components/ui/ShareModal.tsx(194,34): error TS2774: This condition will always return true since this function is always defined. Did you mean to call it instead?
+src/components/ui/ShareModal.tsx(194,53): error TS2774: This condition will always return true since this function is always defined. Did you mean to call it instead?

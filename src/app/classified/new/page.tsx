@@ -23,6 +23,8 @@ export default function NewAdPage() {
         ad_type: 'sale',
         category_id: '',
         image_url: '',
+        mobile: '',
+        contact_email: '',
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -166,6 +168,35 @@ export default function NewAdPage() {
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                         placeholder="Describe your item or service..."
                     />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Number (Optional)</label>
+                        <div className="relative">
+                            <span className="absolute left-3 top-2.5 text-gray-500 text-sm">📞</span>
+                            <input
+                                type="tel"
+                                value={formData.mobile}
+                                onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="+91 98765 43210"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email (Optional)</label>
+                        <div className="relative">
+                            <span className="absolute left-3 top-2.5 text-gray-500 text-sm">✉️</span>
+                            <input
+                                type="email"
+                                value={formData.contact_email}
+                                onChange={(e) => setFormData({ ...formData, contact_email: e.target.value })}
+                                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="contact@example.com"
+                            />
+                        </div>
+                    </div>
                 </div>
 
                 <div>

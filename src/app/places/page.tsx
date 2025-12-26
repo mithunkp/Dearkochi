@@ -23,11 +23,13 @@ import {
   TreeDeciduous,
   LayoutGrid,
   X,
-  Calendar
+  Calendar,
+  Share2
 } from 'lucide-react';
 
 import { Header } from '@/components/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { ShareModal } from '@/components/ui/ShareModal';
 
 interface Attraction {
   id: string;
@@ -201,6 +203,16 @@ export default function Places() {
     ? currentPlaces
     : currentPlaces.filter(place => place.type === selectedCategory);
 
+  const [shareConfig, setShareConfig] = useState<{ isOpen: boolean; item: Attraction | null }>({
+    isOpen: false,
+    item: null
+  });
+
+  const handleShareClick = (e: React.MouseEvent, place: Attraction) => {
+    e.stopPropagation();
+    setShareConfig({ isOpen: true, item: place });
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -293,7 +305,7 @@ export default function Places() {
           {filteredPlaces.map((place) => {
             const Icon = getCategoryIcon(place.type);
             return (
-              <GlassCard key={place.id} className="p-0 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col h-full border-0">
+              <GlassCard key={place.id} className="p-0 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col h-full border-0 group">
                 {/* Place Header */}
                 <div className="bg-gradient-to-br from-blue-500 to-indigo-600 h-40 flex items-center justify-center relative overflow-hidden">
                   {place.image_url ? (
@@ -312,6 +324,8 @@ export default function Places() {
                       {place.type}
                     </span>
                   </div>
+
+
                 </div>
 
                 <div className="p-6 flex flex-col flex-grow">
@@ -359,6 +373,13 @@ export default function Places() {
                       className="flex-1 bg-slate-100 text-slate-700 py-2.5 px-4 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
                     >
                       <Info size={14} /> Details
+                    </button>
+                    <button
+                      onClick={(e) => handleShareClick(e, place)}
+                      className="bg-slate-100 text-slate-700 py-2.5 px-3 rounded-xl text-xs font-bold hover:bg-slate-200 transition-colors flex items-center justify-center shadow-sm"
+                      title="Share"
+                    >
+                      <Share2 size={16} />
                     </button>
                     {place.google_maps_url ? (
                       <a
@@ -465,6 +486,8 @@ export default function Places() {
                   )}
                 </div>
               </div>
+
+
             </div>
 
             <div className="p-6 space-y-8">
@@ -529,6 +552,18 @@ export default function Places() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Share Modal Integration */}
+      {shareConfig.item && (
+        <ShareModal
+          isOpen={shareConfig.isOpen}
+          onClose={() => setShareConfig({ ...shareConfig, isOpen: false })}
+          title={shareConfig.item.name}
+          url={`${typeof window !== 'undefined' ? window.location.origin : ''}/places?id=${shareConfig.item.id}`} // Simple URL structure for now
+          type="place"
+          data={shareConfig.item}
+        />
       )}
     </div>
   );

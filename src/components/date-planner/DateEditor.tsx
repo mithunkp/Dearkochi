@@ -18,6 +18,7 @@ interface DateEditorProps {
     onAddSticker: () => void;
     onUploadSticker: (e: React.ChangeEvent<HTMLInputElement>) => void;
     onDownload: () => void;
+    onShare: () => void;
     onSave: (isPublic: boolean) => void;
     onDelete?: () => void;
     isSaving: boolean;
@@ -32,6 +33,7 @@ const DateEditor: React.FC<DateEditorProps> = ({
     onAddSticker,
     onUploadSticker,
     onDownload,
+    onShare,
     onSave,
     onDelete,
     isSaving,
@@ -139,10 +141,17 @@ const DateEditor: React.FC<DateEditorProps> = ({
                 </div>
 
                 <button
+                    onClick={onShare}
+                    className="w-full py-3 px-4 bg-pink-600 text-white rounded-xl font-bold hover:bg-pink-500 transition-all transform hover:-translate-y-0.5 shadow-md flex items-center justify-center gap-2"
+                >
+                    <Share2 size={18} /> Share Plan
+                </button>
+
+                <button
                     onClick={onDownload}
                     className="w-full py-3 px-4 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-500 transition-all transform hover:-translate-y-0.5 shadow-md flex items-center justify-center gap-2"
                 >
-                    <Download size={18} /> Download Plan
+                    <Download size={18} /> Download Image
                 </button>
 
                 {onDelete && (
