@@ -8,11 +8,12 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Mail, Key, Loader2, Lock } from 'lucide-react';
 
 export default function LoginPage() {
-    const { signInWithEmail, signInWithGoogle, user } = useAuth();
+    const { signInWithEmail, signUpWithEmail, signInWithGoogle, user } = useAuth();
     const router = useRouter();
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [isLogin, setIsLogin] = useState(true);
     const [isEmailLoading, setIsEmailLoading] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
@@ -22,14 +23,19 @@ export default function LoginPage() {
         }
     }, [user, router]);
 
-    const handleEmailLogin = async (e: React.FormEvent) => {
+    const handleEmailAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsEmailLoading(true);
         try {
-            await signInWithEmail(email, password);
+            if (isLogin) {
+                await signInWithEmail(email, password);
+            } else {
+                await signUpWithEmail(email, password);
+                alert('Account created successfully!');
+            }
         } catch (error: any) {
-            console.error('Login error:', error);
-            alert('Login failed: ' + error.message);
+            console.error('Auth error:', error);
+            alert((isLogin ? 'Login' : 'Signup') + ' failed: ' + error.message);
         } finally {
             setIsEmailLoading(false);
         }
@@ -41,7 +47,11 @@ export default function LoginPage() {
             await signInWithGoogle();
         } catch (error: any) {
             console.error('Google login error:', error);
-            alert('Google login failed: ' + error.message);
+            if (error?.code === 'auth/unauthorized-domain') {
+                alert('Login failed: The current domain is not authorized in Firebase Console. Please add this domain to the Authentication > Settings > Authorized Domains list.');
+            } else {
+                alert('Google login failed: ' + error.message);
+            }
         } finally {
             setIsGoogleLoading(false);
         }
@@ -57,8 +67,8 @@ export default function LoginPage() {
                         <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
                             <Lock size={28} />
                         </div>
-                        <h1 className="text-2xl font-bold text-slate-800 mb-2">Welcome Back</h1>
-                        <p className="text-slate-500">Sign in to access your account</p>
+                        <h1 className="text-2xl font-bold text-slate-800 mb-2">{isLogin ? 'Welcome Back' : 'Create Account'}</h1>
+                        <p className="text-slate-500">{isLogin ? 'Sign in to access your account' : 'Sign up to get started'}</p>
                     </div>
 
                     <div className="space-y-6">
@@ -100,7 +110,7 @@ export default function LoginPage() {
                         </div>
 
                         {/* Email Login Form */}
-                        <form onSubmit={handleEmailLogin} className="space-y-4">
+                        <form onSubmit={handleEmailAuth} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Email Address</label>
                                 <div className="relative">
@@ -140,12 +150,22 @@ export default function LoginPage() {
                                     <div className="flex items-center gap-2">
                                         <Loader2 size={18} className="animate-spin" /> Signing In...
                                     </div>
-                                ) : 'Sign In'}
+                                ) : (isLogin ? 'Sign In' : 'Sign Up')}
                             </button>
                         </form>
+
+                        <div className="text-center">
+                            <button
+                                onClick={() => setIsLogin(!isLogin)}
+                                className="text-blue-600 hover:text-blue-700 font-medium text-sm hover:underline"
+                            >
+                                {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+                            </button>
+                        </div>
+
                     </div>
                 </GlassCard>
             </main>
-        </div>
+        </div >
     );
 }
