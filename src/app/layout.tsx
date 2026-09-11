@@ -18,6 +18,11 @@ export const viewport: Viewport = {
   // Let the app paint under the notch and home indicator; the shell adds
   // safe-area padding where it matters.
   viewportFit: 'cover',
+  // Shrink the viewport when the on-screen keyboard opens, so a composer
+  // pinned to the bottom of a full-screen sheet stays above it instead of
+  // sitting behind the keys. Without this the event chat input is unreachable
+  // on Android while typing.
+  interactiveWidget: 'resizes-content',
   // Capped rather than locked, so pinch-zoom still works for accessibility.
   maximumScale: 5,
   themeColor: [

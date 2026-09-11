@@ -1,20 +1,26 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { Notice } from '@/components/ui/Notice';
-import { useAuth } from '@/lib/auth-context';
-import { X, Zap, Calendar, Lock, Globe, MapPin, Users, Clock } from 'lucide-react';
-
+import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { Zap, CalendarDays, Lock, Globe, ShieldCheck, Users, ChevronDown } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth-context';
+import { deriveArea } from '@/lib/event-time';
+import { Notice } from '@/components/ui/Notice';
+import { Button } from '@/components/ui/Button';
+import { FullSheet } from '@/components/ui/FullSheet';
+import { Field, TextInput, TextArea, Select } from '@/components/ui/Field';
 
-// Dynamic import for LocationPicker to avoid SSR issues with Leaflet
 const LocationPicker = dynamic(
     () => import('@/components/ui/LocationPicker').then((mod) => mod.default),
     {
-        loading: () => <div className="h-[300px] w-full bg-slate-100 rounded-xl animate-pulse flex items-center justify-center text-slate-400">Loading Map...</div>,
-        ssr: false
-    }
+        loading: () => (
+            <div className="flex h-[260px] w-full animate-pulse items-center justify-center rounded-xl bg-surface-2 text-sm text-faint">
+                Loading map…
+            </div>
+        ),
+        ssr: false,
+    },
 );
 
 interface CreateEventModalProps {
@@ -23,439 +29,575 @@ interface CreateEventModalProps {
     onCreated: () => void;
 }
 
+type EventType = 'live' | 'scheduled';
+
+const EMPTY = {
+    title: '',
+    description: '',
+    location: '',
+    area: null as string | null,
+    maxParticipants: '',
+    isPrivate: false,
+    requiresApproval: false,
+    scheduledDate: '',
+    scheduledTime: '',
+    durationHours: '2',
+    latitude: null as number | null,
+    longitude: null as number | null,
+};
+
+/** Local YYYY-MM-DD, so the date input's min matches the user's own today. */
+function todayLocal(): string {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModalProps) {
     const { user } = useAuth();
+    const [eventType, setEventType] = useState<EventType>('live');
+    const [form, setForm] = useState(EMPTY);
     const [loading, setLoading] = useState(false);
-    const [eventType, setEventType] = useState<'live' | 'scheduled'>('live');
-    const [formData, setFormData] = useState({
-        title: '',
-        description: '',
-        location: '',
-        maxParticipants: '',
-        isPrivate: false,
-        scheduledDate: '',
-        scheduledTime: '',
-        durationHours: '2',
-        latitude: null as number | null,
-        longitude: null as number | null,
-        requiresApproval: false
-    });
     const [formError, setFormError] = useState<string | null>(null);
-    // Replaces window.prompt() for the missing-nickname case.
-    const [needsNickname, setNeedsNickname] = useState(false);
+    const [nickname, setNickname] = useState<string | null>(null);
     const [nicknameDraft, setNicknameDraft] = useState('');
+    const [showMap, setShowMap] = useState(false);
 
     /*
-     * Reset in an effect, not during render. The previous version called
-     * setFormData() straight from the render body whenever the modal was
-     * closed, which React treats as a state update during render.
+     * The real guard against duplicate events. `loading` alone was not enough:
+     * setLoading(true) only ran after the profile lookup had awaited, so every
+     * click before that resolved got its own insert. Five rows landed in 243ms
+     * on 28 March from a single "Morning Run". A ref flips synchronously, so
+     * the second click is rejected before it can await anything.
      */
+    const submitting = useRef(false);
+
+    const set = useCallback(
+        <K extends keyof typeof EMPTY>(key: K, value: (typeof EMPTY)[K]) =>
+            setForm((prev) => ({ ...prev, [key]: value })),
+        [],
+    );
+
+    // Reset in an effect, not during render.
     useEffect(() => {
         if (isOpen) return;
-        setFormData({
-            title: '',
-            description: '',
-            location: '',
-            maxParticipants: '',
-            isPrivate: false,
-            scheduledDate: '',
-            scheduledTime: '',
-            durationHours: '2',
-            latitude: null,
-            longitude: null,
-            requiresApproval: false
-        });
+        setForm(EMPTY);
         setEventType('live');
         setFormError(null);
-        setNeedsNickname(false);
         setNicknameDraft('');
+        setShowMap(false);
+        submitting.current = false;
     }, [isOpen]);
 
-    if (!isOpen) {
-        return null;
-    }
+    /*
+     * Ask for the nickname up front rather than after a failed submit. The old
+     * form rejected the submission and revealed the field at the top of a long
+     * scrolled page, where nobody saw it.
+     */
+    useEffect(() => {
+        if (!isOpen || !user) return;
+        let alive = true;
+        supabase
+            .from('profiles')
+            .select('nickname')
+            .eq('id', user.uid)
+            .maybeSingle()
+            .then(({ data }) => {
+                if (alive) setNickname(data?.nickname ?? null);
+            });
+        return () => {
+            alive = false;
+        };
+    }, [isOpen, user]);
+
+    const needsNickname = nickname === null;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log('Form submitted', { formData, user });
-
-        setFormError(null);
+        if (submitting.current) return;
 
         if (!user) {
             setFormError('Please sign in to create an event.');
             return;
         }
 
-        // A nickname is what other attendees see, so it must exist first.
-        // maybeSingle: a brand-new account simply has no profile row yet.
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('nickname')
-            .eq('id', user.uid)
-            .maybeSingle();
+        const title = form.title.trim();
+        if (!title) {
+            setFormError('Give your event a name.');
+            return;
+        }
+        if (!form.location.trim()) {
+            setFormError('Add where people should meet.');
+            return;
+        }
+        if (needsNickname && !nicknameDraft.trim()) {
+            setFormError('Choose a nickname — it is what people will see.');
+            return;
+        }
 
-        if (!profile?.nickname) {
-            const nick = nicknameDraft.trim();
-            if (!nick) {
-                setNeedsNickname(true);
-                setFormError('Choose a nickname before creating an event.');
+        let startTime: Date;
+        if (eventType === 'live') {
+            startTime = new Date();
+        } else {
+            if (!form.scheduledDate || !form.scheduledTime) {
+                setFormError('Pick the date and time it starts.');
                 return;
             }
-            const { error: updateError } = await supabase
-                .from('profiles')
-                .upsert({ id: user.uid, email: user.email, nickname: nick });
-            if (updateError) {
-                console.error('Failed to set nickname:', updateError);
-                setFormError('Could not save that nickname. Try another.');
+            startTime = new Date(`${form.scheduledDate}T${form.scheduledTime}`);
+            if (Number.isNaN(startTime.getTime())) {
+                setFormError('That date and time did not make sense.');
                 return;
             }
-            setNeedsNickname(false);
+            // Events in the past used to be accepted silently. Three of the
+            // events already in the database start months before they were
+            // created, so they never appeared in the list at all.
+            if (startTime.getTime() <= Date.now()) {
+                setFormError('That time has already passed. Pick a later one.');
+                return;
+            }
         }
 
-        // Validate required fields
-        const requiredFields = [
-            { field: 'title', label: 'Event Title' },
-            { field: 'description', label: 'Description' },
-            { field: 'location', label: 'Location' }
-        ];
+        const hours = Number(form.durationHours) || 2;
+        const endTime = new Date(startTime.getTime() + hours * 3600_000);
 
-        const missingField = requiredFields.find(field => !formData[field.field as keyof typeof formData]?.toString().trim());
-        if (missingField) {
-            setFormError(`Please fill in ${missingField.label}.`);
+        const max = form.maxParticipants ? Number(form.maxParticipants) : null;
+        if (max !== null && (!Number.isFinite(max) || max < 2)) {
+            setFormError('A limit needs to be 2 or more.');
             return;
         }
 
-        // For live events, ensure location is set
-        if (eventType === 'live' && (!formData.latitude || !formData.longitude)) {
-            setFormError('Pick a location on the map for live events.');
-            return;
-        }
-
-        // For scheduled events, ensure date and time are set
-        if (eventType === 'scheduled' && (!formData.scheduledDate || !formData.scheduledTime)) {
-            setFormError('Choose both a date and a time.');
-            return;
-        }
-
+        submitting.current = true;
         setLoading(true);
+        setFormError(null);
+
         try {
-            let startTime = new Date();
-            let endTime = new Date();
-
-            if (eventType === 'live') {
-                // Live event starts now, ends in X hours
-                endTime.setHours(startTime.getHours() + parseInt(formData.durationHours));
-            } else {
-                // Scheduled event
-                startTime = new Date(`${formData.scheduledDate}T${formData.scheduledTime}`);
-                // Default duration 3 hours for scheduled if not specified? Let's just say 3 hours for now or ask user.
-                // For simplicity, let's add 3 hours to start time
-                endTime = new Date(startTime.getTime() + 3 * 60 * 60 * 1000);
+            if (needsNickname) {
+                const { error: profileError } = await supabase
+                    .from('profiles')
+                    .upsert({
+                        id: user.uid,
+                        email: user.email,
+                        nickname: nicknameDraft.trim(),
+                    });
+                if (profileError) throw profileError;
+                setNickname(nicknameDraft.trim());
             }
 
-            const { data: newEvent, error } = await supabase.from('local_events').insert({
-                creator_id: user.uid,
-                title: formData.title,
-                description: formData.description,
-                event_type: eventType,
-                location: formData.location,
-                area: null,
-                start_time: startTime.toISOString(),
-                end_time: endTime.toISOString(),
-                max_participants: formData.maxParticipants ? parseInt(formData.maxParticipants) : null,
-                is_private: formData.isPrivate,
-                is_closed: false,
-                latitude: formData.latitude,
-                longitude: formData.longitude,
-                requires_approval: formData.requiresApproval
-            }).select().single();
+            const { data: newEvent, error } = await supabase
+                .from('local_events')
+                .insert({
+                    creator_id: user.uid,
+                    title,
+                    description: form.description.trim() || null,
+                    event_type: eventType,
+                    location: form.location.trim(),
+                    // Was hard-coded to null, which is why the area filter has
+                    // never matched anything.
+                    area: form.area,
+                    start_time: startTime.toISOString(),
+                    end_time: endTime.toISOString(),
+                    max_participants: max,
+                    is_private: form.isPrivate,
+                    is_closed: false,
+                    latitude: form.latitude,
+                    longitude: form.longitude,
+                    requires_approval: form.requiresApproval,
+                })
+                .select()
+                .single();
 
-            if (error) {
-                console.error('Supabase error:', error);
-                throw error;
-            }
+            if (error) throw error;
 
-            // Automatically join the creator to the event
             if (newEvent) {
-                const { error: joinError } = await supabase.from('event_participants').insert({
+                await supabase.from('event_participants').insert({
                     event_id: newEvent.id,
                     user_id: user.uid,
-                    status: 'joined'
+                    status: 'joined',
                 });
-
-                if (joinError) {
-                    console.error('Error auto-joining creator:', joinError);
-                    // Don't throw here, event was created successfully
-                }
             }
 
-            console.log('Event created successfully');
             onCreated();
-            onClose();
-        } catch (error) {
-            console.error('Error creating event:', error);
+        } catch (err) {
+            console.error('Error creating event:', err);
             setFormError('Could not create this event. Please try again.');
+            submitting.current = false;
         } finally {
             setLoading(false);
         }
     };
 
+    const isLive = eventType === 'live';
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-            <div className="bg-white rounded-[32px] w-full max-w-lg overflow-hidden shadow-2xl animate-slide-in">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                    <h2 className="text-xl font-bold text-slate-800">Create New Event</h2>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                        <X size={20} className="text-slate-500" />
-                    </button>
+        <FullSheet
+            open={isOpen}
+            onClose={onClose}
+            title="Start something"
+            subtitle="Other people in Kochi can join and come along"
+            footer={
+                <Button
+                    type="submit"
+                    form="create-event-form"
+                    size="lg"
+                    block
+                    loading={loading}
+                >
+                    {isLive ? 'Post it now' : 'Put it on the calendar'}
+                </Button>
+            }
+        >
+            <form
+                id="create-event-form"
+                onSubmit={handleSubmit}
+                className="mx-auto flex w-full max-w-lg flex-col gap-5"
+            >
+                {formError && <Notice tone="error">{formError}</Notice>}
+
+                {/* Type picker. Naming the two kinds plainly is the fastest way
+                    to explain what this section is for. */}
+                <div className="grid grid-cols-2 gap-2">
+                    <TypeCard
+                        active={isLive}
+                        onClick={() => setEventType('live')}
+                        icon={<Zap size={18} />}
+                        label="Happening now"
+                        hint="Starts immediately"
+                        tone="live"
+                    />
+                    <TypeCard
+                        active={!isLive}
+                        onClick={() => setEventType('scheduled')}
+                        icon={<CalendarDays size={18} />}
+                        label="Planned"
+                        hint="Pick a date"
+                        tone="planned"
+                    />
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
-
-                    {formError && <Notice tone="error">{formError}</Notice>}
-
-                    {needsNickname && (
-                        <div>
-                            <label
-                                htmlFor="event-nickname"
-                                className="mb-1.5 block text-sm font-medium text-slate-700"
-                            >
-                                Choose a nickname
-                            </label>
-                            <input
-                                id="event-nickname"
-                                type="text"
+                {needsNickname && (
+                    <Field
+                        label="Your nickname"
+                        hint="This is what everyone who joins will see. Your real name and email stay private."
+                        required
+                    >
+                        {(id) => (
+                            <TextInput
+                                id={id}
                                 value={nicknameDraft}
                                 onChange={(e) => setNicknameDraft(e.target.value)}
                                 maxLength={30}
                                 placeholder="What should people call you?"
-                                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-base focus:border-purple-500 focus:outline-none"
+                                autoComplete="nickname"
                             />
-                            <p className="mt-1.5 text-xs text-slate-500">
-                                Shown to everyone who joins your events.
-                            </p>
-                        </div>
+                        )}
+                    </Field>
+                )}
+
+                <Field label="What is it?" required>
+                    {(id) => (
+                        <TextInput
+                            id={id}
+                            value={form.title}
+                            onChange={(e) => set('title', e.target.value)}
+                            maxLength={80}
+                            placeholder="Sunday morning run"
+                        />
                     )}
+                </Field>
 
-                    {/* Event Type Toggle */}
-                    <div className="flex p-1 bg-slate-100 rounded-xl">
-                        <button
-                            type="button"
-                            onClick={() => setEventType('live')}
-                            className={`flex-1 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all ${eventType === 'live' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                        >
-                            <Zap size={16} className={eventType === 'live' ? 'text-orange-500' : ''} /> Live Now
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setEventType('scheduled')}
-                            className={`flex-1 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all ${eventType === 'scheduled' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                        >
-                            <Calendar size={16} className={eventType === 'scheduled' ? 'text-purple-500' : ''} /> Scheduled
-                        </button>
-                    </div>
+                <Field
+                    label="Any details?"
+                    hint="Optional. Pace, what to bring, how to spot you."
+                >
+                    {(id) => (
+                        <TextArea
+                            id={id}
+                            rows={3}
+                            value={form.description}
+                            onChange={(e) => set('description', e.target.value)}
+                            maxLength={500}
+                            placeholder="Easy 5k along Marine Drive, then coffee."
+                        />
+                    )}
+                </Field>
 
-                    {/* Basic Info */}
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Event Title</label>
-                            <input
-                                required
-                                type="text"
-                                placeholder="e.g., Sunday Morning Run"
-                                className="w-full px-4 py-3 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all"
-                                value={formData.title}
-                                onChange={e => setFormData({ ...formData, title: e.target.value })}
-                            />
-                        </div>
+                <Field
+                    label="Where do you meet?"
+                    required
+                    hint={
+                        isLive
+                            ? 'Pick a public spot — a café, a park, a landmark.'
+                            : undefined
+                    }
+                >
+                    {(id) => (
+                        <TextInput
+                            id={id}
+                            value={form.location}
+                            onChange={(e) => set('location', e.target.value)}
+                            maxLength={100}
+                            placeholder="Marine Drive walkway"
+                        />
+                    )}
+                </Field>
 
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                            <textarea
-                                required
-                                rows={3}
-                                placeholder="What's the plan?"
-                                className="w-full px-4 py-3 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all resize-none"
-                                value={formData.description}
-                                onChange={e => setFormData({ ...formData, description: e.target.value })}
-                            />
-                        </div>
+                {/* The map was 300px of always-on chrome in a form people
+                    abandon. It is worth having, so it stays — behind a tap. */}
+                <div>
+                    <button
+                        type="button"
+                        onClick={() => setShowMap((v) => !v)}
+                        aria-expanded={showMap}
+                        className="press flex w-full items-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-3 text-left"
+                    >
+                        <span className="flex-1 text-[14px] font-semibold text-foreground">
+                            {form.latitude
+                                ? 'Map pin added'
+                                : 'Add a map pin (optional)'}
+                        </span>
+                        {form.latitude && (
+                            <span className="text-[12px] font-medium text-success">
+                                Set
+                            </span>
+                        )}
+                        <ChevronDown
+                            size={18}
+                            className={`shrink-0 text-faint transition-transform ${showMap ? 'rotate-180' : ''}`}
+                        />
+                    </button>
 
-                        <div className="grid grid-cols-1 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Location Name</label>
-                                <div className="relative">
-                                    <MapPin size={18} className="absolute left-3 top-3.5 text-slate-400" />
-                                    <input
-                                        required
-                                        type="text"
-                                        placeholder="Venue/Spot"
-                                        className={`w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all ${eventType === 'live' ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                        value={formData.location}
-                                        onChange={e => setFormData({ ...formData, location: e.target.value })}
-                                        readOnly={eventType === 'live'}
-                                    />
-                                </div>
-                                {eventType === 'live' && (
-                                    <p className="text-xs text-orange-500 mt-1">
-                                        Location is automatically detected for Live events.
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Map Picker */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Pin Location on Map</label>
-                            <div className="h-[300px] w-full bg-slate-100 rounded-xl overflow-hidden">
+                    {showMap && (
+                        <div className="mt-2 overflow-hidden rounded-xl border border-line">
+                            <div className="h-[260px] w-full bg-surface-2">
                                 <LocationPicker
-                                    restrictToCurrentLocation={eventType === 'live'}
+                                    restrictToCurrentLocation={isLive}
                                     onLocationSelect={(lat, lng, address) => {
-                                        console.log('Location selected:', { lat, lng, address });
-                                        setFormData(prev => ({
+                                        setForm((prev) => ({
                                             ...prev,
                                             latitude: lat,
                                             longitude: lng,
-                                            location: address ? address.split(',')[0] : prev.location
+                                            area: deriveArea(address) ?? prev.area,
+                                            location: address
+                                                ? address.split(',')[0].trim()
+                                                : prev.location,
                                         }));
                                     }}
                                 />
                             </div>
-                            <p className="text-xs text-slate-500 mt-1">
-                                {eventType === 'live'
-                                    ? 'Live events must use your current location.'
-                                    : 'Search or click on the map to set location.'}
-                            </p>
-                            {formData.latitude && formData.longitude && (
-                                <p className="text-xs text-green-600 mt-1">
-                                    Location set: {formData.latitude?.toFixed(4)}, {formData.longitude?.toFixed(4)}
-                                </p>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Timing */}
-                    {eventType === 'live' ? (
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Duration (Hours)</label>
-                            <select
-                                className="w-full px-4 py-3 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all"
-                                value={formData.durationHours}
-                                onChange={e => setFormData({ ...formData, durationHours: e.target.value })}
-                            >
-                                <option value="1">1 Hour</option>
-                                <option value="2">2 Hours</option>
-                                <option value="3">3 Hours</option>
-                                <option value="4">4 Hours</option>
-                            </select>
-                            <p className="text-xs text-slate-500 mt-1">Live events disappear after the duration ends.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
-                                <input
-                                    required
-                                    type="date"
-                                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all"
-                                    value={formData.scheduledDate}
-                                    onChange={e => setFormData({ ...formData, scheduledDate: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Time</label>
-                                <input
-                                    required
-                                    type="time"
-                                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all"
-                                    value={formData.scheduledTime}
-                                    onChange={e => setFormData({ ...formData, scheduledTime: e.target.value })}
-                                />
-                            </div>
                         </div>
                     )}
+                </div>
 
-                    {/* Settings */}
-                    <div className="space-y-4 pt-2 border-t border-slate-100">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className={`p-2 rounded-lg ${formData.isPrivate ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-500'}`}>
-                                    {formData.isPrivate ? <Lock size={20} /> : <Globe size={20} />}
-                                </div>
-                                <div>
-                                    <div className="font-medium text-slate-800">Private Event</div>
-                                    <div className="text-xs text-slate-500">Only joined members can see chat</div>
-                                </div>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={formData.isPrivate}
-                                    onChange={e => setFormData({ ...formData, isPrivate: e.target.checked })}
-                                />
-                                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                            </label>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className={`p-2 rounded-lg ${formData.requiresApproval ? 'bg-orange-100 text-orange-600' : 'bg-slate-100 text-slate-500'}`}>
-                                    {formData.requiresApproval ? <Lock size={20} /> : <Users size={20} />}
-                                </div>
-                                <div>
-                                    <div className="font-medium text-slate-800">Require Approval</div>
-                                    <div className="text-xs text-slate-500">Review requests before users join</div>
-                                </div>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={formData.requiresApproval}
-                                    onChange={e => setFormData({ ...formData, requiresApproval: e.target.checked })}
-                                />
-                                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                            </label>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                            <div className="flex-1">
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Max Participants</label>
-                                <div className="relative">
-                                    <Users size={18} className="absolute left-3 top-3.5 text-slate-400" />
-                                    <input
-                                        type="number"
-                                        placeholder="Unlimited"
-                                        min="2"
-                                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-50 border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all"
-                                        value={formData.maxParticipants}
-                                        onChange={e => setFormData({ ...formData, maxParticipants: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className={`w-full py-4 bg-[#5A4FCF] hover:bg-[#4a3fc1] text-white rounded-xl font-bold shadow-lg shadow-purple-200 transition-all ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                {isLive ? (
+                    <Field
+                        label="How long will you be there?"
+                        hint="It disappears from the list when the time is up."
                     >
-                        {loading ? (
-                            <div className="flex items-center justify-center gap-2">
-                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                Creating...
-                            </div>
-                        ) : (
-                            'Create Event'
+                        {(id) => (
+                            <Select
+                                id={id}
+                                value={form.durationHours}
+                                onChange={(e) => set('durationHours', e.target.value)}
+                            >
+                                <option value="1">1 hour</option>
+                                <option value="2">2 hours</option>
+                                <option value="3">3 hours</option>
+                                <option value="4">4 hours</option>
+                                <option value="6">6 hours</option>
+                            </Select>
                         )}
-                    </button>
+                    </Field>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Field label="Date" required>
+                                {(id) => (
+                                    <TextInput
+                                        id={id}
+                                        type="date"
+                                        min={todayLocal()}
+                                        value={form.scheduledDate}
+                                        onChange={(e) =>
+                                            set('scheduledDate', e.target.value)
+                                        }
+                                    />
+                                )}
+                            </Field>
+                            <Field label="Start time" required>
+                                {(id) => (
+                                    <TextInput
+                                        id={id}
+                                        type="time"
+                                        value={form.scheduledTime}
+                                        onChange={(e) =>
+                                            set('scheduledTime', e.target.value)
+                                        }
+                                    />
+                                )}
+                            </Field>
+                        </div>
+                        {/* Scheduled events used to get a hard-coded 3-hour
+                            end time, so they vanished from the list three
+                            hours after starting no matter how long they ran. */}
+                        <Field label="How long will it run?">
+                            {(id) => (
+                                <Select
+                                    id={id}
+                                    value={form.durationHours}
+                                    onChange={(e) =>
+                                        set('durationHours', e.target.value)
+                                    }
+                                >
+                                    <option value="1">1 hour</option>
+                                    <option value="2">2 hours</option>
+                                    <option value="3">3 hours</option>
+                                    <option value="4">4 hours</option>
+                                    <option value="6">6 hours</option>
+                                    <option value="8">All day</option>
+                                </Select>
+                            )}
+                        </Field>
+                    </>
+                )}
 
-                </form>
-            </div>
-        </div>
+                <div className="flex flex-col gap-2 border-t border-line pt-5">
+                    <Toggle
+                        checked={form.isPrivate}
+                        onChange={(v) => set('isPrivate', v)}
+                        icon={form.isPrivate ? <Lock size={18} /> : <Globe size={18} />}
+                        label="Private"
+                        hint={
+                            form.isPrivate
+                                ? 'Only people who joined can read the chat'
+                                : 'Anyone can read the chat'
+                        }
+                    />
+                    <Toggle
+                        checked={form.requiresApproval}
+                        onChange={(v) => set('requiresApproval', v)}
+                        icon={
+                            form.requiresApproval ? (
+                                <ShieldCheck size={18} />
+                            ) : (
+                                <Users size={18} />
+                            )
+                        }
+                        label="Approve each person"
+                        hint={
+                            form.requiresApproval
+                                ? 'You accept or decline every request'
+                                : 'Anyone can join straight away'
+                        }
+                    />
+                </div>
+
+                <Field
+                    label="Limit how many can join"
+                    hint="Leave empty for no limit."
+                >
+                    {(id) => (
+                        <TextInput
+                            id={id}
+                            type="number"
+                            inputMode="numeric"
+                            min={2}
+                            max={500}
+                            value={form.maxParticipants}
+                            onChange={(e) => set('maxParticipants', e.target.value)}
+                            placeholder="No limit"
+                        />
+                    )}
+                </Field>
+            </form>
+        </FullSheet>
+    );
+}
+
+function TypeCard({
+    active,
+    onClick,
+    icon,
+    label,
+    hint,
+    tone,
+}: {
+    active: boolean;
+    onClick: () => void;
+    icon: React.ReactNode;
+    label: string;
+    hint: string;
+    tone: 'live' | 'planned';
+}) {
+    const accent =
+        tone === 'live'
+            ? 'text-cat-emergency bg-cat-emergency-soft'
+            : 'text-cat-social bg-cat-social-soft';
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-pressed={active}
+            className={`press flex flex-col items-start gap-1.5 rounded-2xl border-2 p-3.5 text-left ${
+                active
+                    ? 'border-primary bg-primary-soft/40'
+                    : 'border-line bg-surface'
+            }`}
+        >
+            <span
+                className={`flex h-9 w-9 items-center justify-center rounded-xl ${accent}`}
+            >
+                {icon}
+            </span>
+            <span className="text-[14px] font-bold leading-tight text-foreground">
+                {label}
+            </span>
+            <span className="text-[12px] leading-tight text-muted">{hint}</span>
+        </button>
+    );
+}
+
+function Toggle({
+    checked,
+    onChange,
+    icon,
+    label,
+    hint,
+}: {
+    checked: boolean;
+    onChange: (v: boolean) => void;
+    icon: React.ReactNode;
+    label: string;
+    hint: string;
+}) {
+    return (
+        <label className="flex cursor-pointer items-center gap-3 rounded-xl px-1 py-2">
+            <span
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                    checked
+                        ? 'bg-primary-soft text-primary'
+                        : 'bg-surface-2 text-faint'
+                }`}
+            >
+                {icon}
+            </span>
+            <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-semibold text-foreground">
+                    {label}
+                </span>
+                <span className="block text-[12px] leading-snug text-muted">
+                    {hint}
+                </span>
+            </span>
+            <input
+                type="checkbox"
+                className="peer sr-only"
+                checked={checked}
+                onChange={(e) => onChange(e.target.checked)}
+            />
+            {/* The knob is an ::after on the track rather than a nested span:
+                `peer-checked:` compiles to a sibling selector, so it cannot
+                reach an element nested inside the track. */}
+            <span className="relative h-7 w-12 shrink-0 rounded-full bg-surface-3 transition-colors after:absolute after:left-1 after:top-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2" />
+        </label>
     );
 }

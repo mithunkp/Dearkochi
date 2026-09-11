@@ -14,6 +14,10 @@ export interface LocalEvent {
   participant_count?: number;
   requires_approval: boolean;
   area: string | null;
+  /** Added by add_coordinates_to_events.sql; null on every row created
+   *  before the create form started writing them. */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface NewsItem {

@@ -1,15 +1,33 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+    Send,
+    Users,
+    MapPin,
+    Clock,
+    Lock,
+    Trash2,
+    StopCircle,
+    Zap,
+    Check,
+    X,
+    CalendarDays,
+    MoreVertical,
+    UserMinus,
+    Globe,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import type { LocalEvent } from '@/app/types';
 import { UserDisplay } from '@/components/UserDisplay';
-import { X, Send, Users, MapPin, Clock, Lock, MoreVertical, Trash2, StopCircle, Zap, Check } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 import { Notice } from '@/components/ui/Notice';
 import { Sheet } from '@/components/ui/Sheet';
 import { Button } from '@/components/ui/Button';
+import { FullSheet, SheetTabs } from '@/components/ui/FullSheet';
+import { Field, TextInput, TextArea } from '@/components/ui/Field';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { getEventPhase, getTimingLabel, formatWhen } from '@/lib/event-time';
 
 interface EventDetailsModalProps {
     event: LocalEvent;
@@ -18,52 +36,65 @@ interface EventDetailsModalProps {
     onUpdate: () => void;
 }
 
+type Profile = {
+    nickname: string | null;
+    flair: string | null;
+    email: string;
+};
+
 type Message = {
     id: string;
     user_id: string;
     content: string;
     created_at: string;
-    profiles: {
-        nickname: string | null;
-        flair: string | null;
-        email: string;
-    };
-    skipAnimation?: boolean;
+    profiles: Profile;
+    pending?: boolean;
 };
 
 type Participant = {
     user_id: string;
     status: 'joined' | 'removed' | 'pending' | 'rejected';
     request_message?: string;
-    profiles: {
-        nickname: string | null;
-        flair: string | null;
-        email: string;
-    };
+    profiles: Profile;
 };
 
-export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDetailsModalProps) {
+type Tab = 'about' | 'chat' | 'people';
+
+function toProfile(raw: unknown): Profile {
+    const p = (raw ?? {}) as Partial<Profile>;
+    return {
+        nickname: p.nickname ?? null,
+        flair: p.flair ?? null,
+        email: p.email ?? '',
+    };
+}
+
+export function EventDetailsModal({
+    event,
+    isOpen,
+    onClose,
+    onUpdate,
+}: EventDetailsModalProps) {
     const { user } = useAuth();
+    const [tab, setTab] = useState<Tab>('about');
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const [participants, setParticipants] = useState<Participant[]>([]);
-    const [hasJoined, setHasJoined] = useState(false);
-    const [isCreator, setIsCreator] = useState(false);
-    const [loading, setLoading] = useState(false);
-    const [showParticipants, setShowParticipants] = useState(false);
-    const [isEventFull, setIsEventFull] = useState(false);
-    const [userNickname, setUserNickname] = useState<string | null>(null);
-    const [joinMessage, setJoinMessage] = useState('');
-    const [showJoinModal, setShowJoinModal] = useState(false);
     const [pendingRequests, setPendingRequests] = useState<Participant[]>([]);
-    const [myRequestStatus, setMyRequestStatus] = useState<'pending' | 'rejected' | null>(null);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    // Inline feedback and confirmations, replacing alert/confirm/prompt.
+    const [hasJoined, setHasJoined] = useState(false);
+    const [myRequestStatus, setMyRequestStatus] = useState<
+        'pending' | 'rejected' | null
+    >(null);
+    const [nickname, setNickname] = useState<string | null>(null);
+    const [nicknameDraft, setNicknameDraft] = useState('');
+    const [joinMessage, setJoinMessage] = useState('');
+    const [showJoinSheet, setShowJoinSheet] = useState(false);
+    const [showMenu, setShowMenu] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [sending, setSending] = useState(false);
     const [notice, setNotice] = useState<
         { tone: 'success' | 'error'; text: string } | null
     >(null);
-    const [nicknameDraft, setNicknameDraft] = useState('');
-    const [needsNickname, setNeedsNickname] = useState(false);
     const [pendingAction, setPendingAction] = useState<{
         title: string;
         body?: string;
@@ -71,398 +102,266 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
         run: () => Promise<void> | void;
     } | null>(null);
 
-    // Compute access dynamically based on current state
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const isCreator = !!user && user.uid === event.creator_id;
+    const phase = getEventPhase(event);
+    const isLive = event.event_type === 'live';
+    const joinedCount = participants.length;
+    const isFull = event.max_participants
+        ? joinedCount >= event.max_participants
+        : false;
+    const spotsLeft = event.max_participants
+        ? event.max_participants - joinedCount
+        : null;
     const canViewChat = !event.is_private || hasJoined || isCreator;
-    const canSendMessages = canViewChat && (hasJoined || isCreator) && userNickname;
-    const spotsRemaining = event.max_participants ? event.max_participants - participants.length : null;
+    const canSend = canViewChat && (hasJoined || isCreator) && !!nickname;
 
+    /*
+     * The realtime handler used to read `isCreator` out of the effect closure,
+     * where it was still false from the first render, so a host never saw new
+     * join requests arrive live. A ref always holds the current value.
+     */
+    const isCreatorRef = useRef(isCreator);
     useEffect(() => {
-        let isMounted = true;
-        let msgChannel: any = null;
-        let partChannel: any = null;
+        isCreatorRef.current = isCreator;
+    }, [isCreator]);
 
-        const init = async () => {
-            // Set creator status
-            const isEventCreator = user?.uid === event.creator_id;
-            if (isMounted) {
-                setIsCreator(isEventCreator);
-            }
-
-            // Fetch user's nickname
-            if (user) {
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('nickname')
-                    .eq('id', user.uid)
-                    .single();
-
-                if (isMounted) {
-                    setUserNickname(profile?.nickname || null);
-                }
-            }
-
-            // Check participation status
-            let userHasJoined = false;
-            if (user) {
-                const { data } = await supabase
-                    .from('event_participants')
-                    .select('status')
-                    .eq('event_id', event.id)
-                    .eq('user_id', user.uid)
-                    .single();
-
-                userHasJoined = data?.status === 'joined';
-                if (isMounted) {
-                    setHasJoined(userHasJoined);
-                    if (data?.status === 'pending' || data?.status === 'rejected') {
-                        setMyRequestStatus(data.status);
-                    } else {
-                        setMyRequestStatus(null);
-                    }
-                }
-            } else if (isMounted) {
-                setHasJoined(false);
-                setIsCreator(false);
-            }
-
-            // Parallel fetch for speed
-            if (isMounted) {
-                const canViewChat = !event.is_private || userHasJoined || isEventCreator;
-
-                const promises = [fetchParticipants()];
-
-                if (isEventCreator) {
-                    promises.push(fetchPendingRequests());
-                }
-
-                if (canViewChat) {
-                    promises.push(fetchMessages());
-                }
-
-                await Promise.all(promises);
-            }
-
-            // Realtime subscriptions
-            if (isMounted) {
-                msgChannel = supabase
-                    .channel(`event_messages:${event.id}`)
-                    .on('postgres_changes',
-                        {
-                            event: 'INSERT',
-                            schema: 'public',
-                            table: 'event_messages',
-                            filter: `event_id=eq.${event.id}`
-                        },
-                        async (payload) => {
-                            if (!isMounted) return;
-                            // Re-check access before adding message
-                            const { data: participantData } = await supabase
-                                .from('event_participants')
-                                .select('status')
-                                .eq('event_id', event.id)
-                                .eq('user_id', user?.uid || '')
-                                .single();
-
-                            const hasAccess = !event.is_private ||
-                                participantData?.status === 'joined' ||
-                                user?.uid === event.creator_id;
-
-                            if (hasAccess) {
-                                fetchMessageSender(payload.new as any);
-                            }
-                        }
-                    )
-                    .subscribe();
-
-                partChannel = supabase
-                    .channel(`event_participants:${event.id}`)
-                    .on('postgres_changes',
-                        {
-                            event: '*',
-                            schema: 'public',
-                            table: 'event_participants',
-                            filter: `event_id=eq.${event.id}`
-                        },
-                        () => {
-                            if (!isMounted) return;
-                            fetchParticipants();
-                            if (isCreator) {
-                                fetchPendingRequests();
-                            }
-                            if (user) {
-                                checkParticipation();
-                            }
-                        }
-                    )
-                    .subscribe();
-            }
-        };
-
-        init();
-
-        return () => {
-            isMounted = false;
-            if (msgChannel) supabase.removeChannel(msgChannel);
-            if (partChannel) supabase.removeChannel(partChannel);
-        };
-    }, [event.id, user]);
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    const fetchMessageSender = async (msg: any) => {
-        const { data } = await supabase.from('profiles').select('nickname, email').eq('id', msg.user_id).single();
-        if (data) {
-            setMessages(prev => {
-                const fullMessage = { ...msg, profiles: data };
-
-                // 1. Check if message with this ID already exists (Dedupe real updates)
-                if (prev.some(m => m.id === fullMessage.id)) {
-                    return prev;
-                }
-
-                // 2. Check for matching optimistic message (Same user, same content, temp ID)
-                const optimisticMatchIndex = prev.findIndex(m =>
-                    m.user_id === fullMessage.user_id &&
-                    m.content === fullMessage.content &&
-                    String(m.id).startsWith('temp-')
-                );
-
-                if (optimisticMatchIndex !== -1) {
-                    // Replace optimistic message with real message (preserves position)
-                    const newMessages = [...prev];
-                    // Mark as skipAnimation to prevent "slide-in" from running again when key changes
-                    newMessages[optimisticMatchIndex] = { ...fullMessage, skipAnimation: true };
-                    return newMessages;
-                }
-
-                // 3. Otherwise append new message
-                return [...prev, fullMessage];
-            });
-        }
-    };
-
-    const fetchMessages = async () => {
-        if (!event?.id) {
-            console.warn('No event ID provided');
-            return;
-        }
-
-        try {
-            // Auth here is Firebase, not Supabase. This previously gated on
-            // supabase.auth.getUser(), which is always null because the app
-            // never creates a Supabase session — so the event chat silently
-            // returned early and no messages were ever displayed.
-            if (!user) {
-                return;
-            }
-
-            // Fetch messages with embedded profiles
-            const { data: messagesData, error } = await supabase
-                .from('event_messages')
-                .select(`
-                    id,
-                    content,
-                    created_at,
-                    user_id,
-                    profiles (
-                        nickname,
-                        flair,
-                        email
-                    )
-                `)
-                .eq('event_id', event.id)
-                .order('created_at', { ascending: true });
-
-            if (error) {
-                console.error('Supabase query error (messages):', JSON.stringify(error, null, 2));
-                return;
-            }
-
-            if (!messagesData) {
-                setMessages([]);
-                return;
-            }
-
-            // Transform data to match Message type
-            const formattedMessages: Message[] = messagesData.map((msg: any) => ({
-                id: msg.id,
-                content: msg.content,
-                created_at: msg.created_at,
-                user_id: msg.user_id,
-                profiles: {
-                    nickname: msg.profiles?.nickname || null,
-                    flair: msg.profiles?.flair || null,
-                    email: msg.profiles?.email || ''
-                }
-            }));
-
-            setMessages(formattedMessages);
-        } catch (error) {
-            console.error('Error in fetchMessages:', {
-                error: error instanceof Error ? error.message : 'Unknown error',
-                eventId: event?.id
-            });
-        }
-    };
-
-    const fetchParticipants = async () => {
-        const { data: participantsData, error } = await supabase
+    const fetchParticipants = useCallback(async () => {
+        const { data, error } = await supabase
             .from('event_participants')
-            .select(`
-                user_id,
-                status,
-                profiles (
-                    nickname,
-                    flair,
-                    email
-                )
-            `)
+            .select('user_id, status, profiles ( nickname, flair, email )')
             .eq('event_id', event.id)
             .eq('status', 'joined');
-
         if (error) {
-            console.error('Error fetching participants:', JSON.stringify(error, null, 2));
+            console.error('Error fetching participants:', error.message);
             return;
         }
+        setParticipants(
+            (data ?? []).map((p) => ({
+                user_id: p.user_id,
+                status: 'joined' as const,
+                profiles: toProfile(p.profiles),
+            })),
+        );
+    }, [event.id]);
 
-        if (!participantsData) {
-            setParticipants([]);
-            return;
-        }
-
-        // Transform data to match Participant type
-        const formattedParticipants: Participant[] = participantsData.map((p: any) => ({
-            user_id: p.user_id,
-            status: p.status,
-            profiles: {
-                nickname: p.profiles?.nickname || null,
-                flair: p.profiles?.flair || null,
-                email: p.profiles?.email || ''
-            }
-        }));
-
-        setParticipants(formattedParticipants);
-
-        // Check if event is full
-        if (event.max_participants) {
-            setIsEventFull(formattedParticipants.length >= event.max_participants);
-        }
-    };
-
-    const fetchPendingRequests = async () => {
-        const { data: requestsData, error } = await supabase
+    const fetchPendingRequests = useCallback(async () => {
+        const { data, error } = await supabase
             .from('event_participants')
-            .select(`
-                user_id,
-                status,
-                request_message,
-                profiles (
-                    nickname,
-                    flair,
-                    email
-                )
-            `)
+            .select(
+                'user_id, status, request_message, profiles ( nickname, flair, email )',
+            )
             .eq('event_id', event.id)
             .eq('status', 'pending');
-
         if (error) {
-            console.error('Error fetching requests:', JSON.stringify(error, null, 2));
+            console.error('Error fetching requests:', error.message);
             return;
         }
+        setPendingRequests(
+            (data ?? []).map((p) => ({
+                user_id: p.user_id,
+                status: 'pending' as const,
+                request_message: p.request_message ?? undefined,
+                profiles: toProfile(p.profiles),
+            })),
+        );
+    }, [event.id]);
 
-        if (!requestsData) {
-            setPendingRequests([]);
+    const fetchMessages = useCallback(async () => {
+        const { data, error } = await supabase
+            .from('event_messages')
+            .select(
+                'id, content, created_at, user_id, profiles ( nickname, flair, email )',
+            )
+            .eq('event_id', event.id)
+            .order('created_at', { ascending: true });
+        if (error) {
+            console.error('Error fetching messages:', error.message);
             return;
         }
+        setMessages(
+            (data ?? []).map((m) => ({
+                id: m.id,
+                content: m.content,
+                created_at: m.created_at,
+                user_id: m.user_id,
+                profiles: toProfile(m.profiles),
+            })),
+        );
+    }, [event.id]);
 
-        const formattedRequests: Participant[] = requestsData.map((p: any) => ({
-            user_id: p.user_id,
-            status: p.status,
-            request_message: p.request_message,
-            profiles: {
-                nickname: p.profiles?.nickname || null,
-                flair: p.profiles?.flair || null,
-                email: p.profiles?.email || ''
-            }
-        }));
-
-        setPendingRequests(formattedRequests);
-    };
-
-    const checkParticipation = async () => {
-        if (!user) return;
+    /*
+     * maybeSingle, not single. `single()` raises PGRST116 whenever there is no
+     * row, which is the normal case for anyone who has not joined yet and for
+     * every new account with no profile — so opening an event logged an error
+     * every time.
+     */
+    const checkParticipation = useCallback(async () => {
+        if (!user) {
+            setHasJoined(false);
+            setMyRequestStatus(null);
+            return false;
+        }
         const { data } = await supabase
             .from('event_participants')
             .select('status')
             .eq('event_id', event.id)
             .eq('user_id', user.uid)
-            .single();
+            .maybeSingle();
 
-        setHasJoined(data?.status === 'joined');
-        if (data?.status === 'pending' || data?.status === 'rejected') {
-            setMyRequestStatus(data.status);
-        } else {
-            setMyRequestStatus(null);
+        const joined = data?.status === 'joined';
+        setHasJoined(joined);
+        setMyRequestStatus(
+            data?.status === 'pending' || data?.status === 'rejected'
+                ? data.status
+                : null,
+        );
+        return joined;
+    }, [event.id, user]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        let alive = true;
+
+        const init = async () => {
+            if (user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('nickname')
+                    .eq('id', user.uid)
+                    .maybeSingle();
+                if (alive) setNickname(profile?.nickname ?? null);
+            }
+
+            const joined = await checkParticipation();
+            if (!alive) return;
+
+            const jobs: Promise<unknown>[] = [fetchParticipants()];
+            if (user?.uid === event.creator_id) jobs.push(fetchPendingRequests());
+            if (!event.is_private || joined || user?.uid === event.creator_id) {
+                jobs.push(fetchMessages());
+            }
+            await Promise.all(jobs);
+        };
+
+        init();
+
+        const msgChannel = supabase
+            .channel(`event_messages:${event.id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'event_messages',
+                    filter: `event_id=eq.${event.id}`,
+                },
+                () => {
+                    if (alive) fetchMessages();
+                },
+            )
+            .subscribe();
+
+        const partChannel = supabase
+            .channel(`event_participants:${event.id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'event_participants',
+                    filter: `event_id=eq.${event.id}`,
+                },
+                () => {
+                    if (!alive) return;
+                    fetchParticipants();
+                    checkParticipation();
+                    if (isCreatorRef.current) fetchPendingRequests();
+                },
+            )
+            .subscribe();
+
+        return () => {
+            alive = false;
+            supabase.removeChannel(msgChannel);
+            supabase.removeChannel(partChannel);
+        };
+    }, [
+        isOpen,
+        event.id,
+        event.is_private,
+        event.creator_id,
+        user,
+        checkParticipation,
+        fetchParticipants,
+        fetchPendingRequests,
+        fetchMessages,
+    ]);
+
+    // Keep the newest message in view while the chat pane is the one showing.
+    useEffect(() => {
+        if (tab !== 'chat') return;
+        messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    }, [tab, messages.length]);
+
+    const ensureNickname = async (): Promise<string | null> => {
+        if (nickname) return nickname;
+        if (!user) return null;
+        const draft = nicknameDraft.trim();
+        if (!draft) {
+            setNotice({
+                tone: 'error',
+                text: 'Choose a nickname first — it is what people will see.',
+            });
+            return null;
         }
+        const { error } = await supabase
+            .from('profiles')
+            .upsert({ id: user.uid, email: user.email, nickname: draft });
+        if (error) {
+            setNotice({ tone: 'error', text: 'Could not save that nickname.' });
+            return null;
+        }
+        setNickname(draft);
+        return draft;
     };
 
-    const handleJoinRequest = async (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
-        if (!user) return;
-
-        // Check nickname again
-        if (!userNickname) {
-            const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.uid).maybeSingle();
-            if (!profile?.nickname) {
-                const nick = nicknameDraft.trim();
-                if (!nick) {
-                    setNeedsNickname(true);
-                    setNotice({
-                        tone: 'error',
-                        text: 'Choose a nickname before joining events.',
-                    });
-                    return;
-                }
-                const { error: updateError } = await supabase
-                    .from('profiles')
-                    .upsert({ id: user.uid, email: user.email, nickname: nick });
-                if (updateError) {
-                    console.error('Failed to set nickname:', updateError);
-                    setNotice({ tone: 'error', text: 'Could not save that nickname.' });
-                    return;
-                }
-                setUserNickname(nick);
-                setNeedsNickname(false);
-            } else {
-                setUserNickname(profile.nickname);
-            }
+    const doJoin = async () => {
+        if (!user || busy) return;
+        setBusy(true);
+        const nick = await ensureNickname();
+        if (!nick) {
+            setBusy(false);
+            return;
         }
-
-        setLoading(true);
 
         const status = event.requires_approval ? 'pending' : 'joined';
         const { error } = await supabase.from('event_participants').upsert({
             event_id: event.id,
             user_id: user.uid,
-            status: status,
-            request_message: event.requires_approval ? joinMessage : null
+            status,
+            request_message: event.requires_approval
+                ? joinMessage.trim() || null
+                : null,
         });
+        setBusy(false);
+        setShowJoinSheet(false);
 
-        setLoading(false);
-        setShowJoinModal(false);
-
-        if (!error) {
-            if (status === 'joined') {
-                setHasJoined(true);
-                onUpdate();
-            } else {
-                setMyRequestStatus('pending');
-                setNotice({ tone: 'success', text: 'Request sent. Waiting for approval.' });
-            }
-        } else {
+        if (error) {
             setNotice({ tone: 'error', text: 'Could not join. Please try again.' });
+            return;
+        }
+        if (status === 'joined') {
+            setHasJoined(true);
+            setTab('chat');
+            onUpdate();
+        } else {
+            setMyRequestStatus('pending');
+            setNotice({
+                tone: 'success',
+                text: 'Request sent. The host will get back to you.',
+            });
         }
     };
 
@@ -471,559 +370,699 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
             setNotice({ tone: 'error', text: 'Please sign in to join events.' });
             return;
         }
-
-        if (isEventFull && !isCreator) {
-            setNotice({ tone: 'error', text: 'This event is full.' });
+        if (isFull) {
+            setNotice({ tone: 'error', text: 'This one is full.' });
             return;
         }
-
-        if (event.requires_approval) {
-            setShowJoinModal(true);
+        if (event.requires_approval || !nickname) {
+            setShowJoinSheet(true);
         } else {
-            handleJoinRequest();
+            doJoin();
         }
     };
 
-    const handleApprove = async (userId: string) => {
+    const approve = async (userId: string) => {
         const { error } = await supabase
             .from('event_participants')
             .update({ status: 'joined' })
             .eq('event_id', event.id)
             .eq('user_id', userId);
-
         if (error) {
             setNotice({ tone: 'error', text: 'Could not approve that request.' });
-        } else {
-            // Refresh lists
-            fetchParticipants();
-            fetchPendingRequests();
+            return;
         }
+        fetchParticipants();
+        fetchPendingRequests();
+        onUpdate();
     };
 
-    const handleReject = async (userId: string) => {
-        setPendingAction({
-            title: 'Reject this request?',
-            body: 'They will not be able to join this event.',
-            label: 'Reject',
-            run: () => doRejectRequest(userId),
+    const sendMessage = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const content = newMessage.trim();
+        if (!content || !user || sending) return;
+
+        setNewMessage('');
+        setSending(true);
+
+        const tempId = `temp-${Date.now()}`;
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: tempId,
+                user_id: user.uid,
+                content,
+                created_at: new Date().toISOString(),
+                profiles: { nickname: nickname ?? 'You', flair: null, email: '' },
+                pending: true,
+            },
+        ]);
+
+        const { error } = await supabase.from('event_messages').insert({
+            event_id: event.id,
+            user_id: user.uid,
+            content,
         });
-    };
-
-    const doRejectRequest = async (userId: string) => {
-        const { error } = await supabase
-            .from('event_participants')
-            .update({ status: 'rejected' })
-            .eq('event_id', event.id)
-            .eq('user_id', userId);
+        setSending(false);
 
         if (error) {
-            setNotice({ tone: 'error', text: 'Could not reject that request.' });
-        } else {
-            fetchPendingRequests();
-        }
-    };
-
-    const handleLeave = async () => {
-        if (!user) return;
-        setPendingAction({
-            title: 'Leave this event?',
-            body: 'You can join again later if there is still room.',
-            label: 'Leave',
-            run: async () => {
-                const { error } = await supabase
-                    .from('event_participants')
-                    .delete()
-                    .eq('event_id', event.id)
-                    .eq('user_id', user.uid);
-                if (!error) {
-                    setHasJoined(false);
-                    onUpdate();
-                }
-            },
-        });
-    };
-
-    const handleDeleteEvent = async () => {
-        if (!user || user.uid !== event.creator_id) return;
-        setPendingAction({
-            title: 'Delete this event?',
-            body: 'It will be removed for everyone. This cannot be undone.',
-            label: 'Delete',
-            run: async () => {
-                const { error } = await supabase
-                    .from('local_events')
-                    .delete()
-                    .eq('id', event.id);
-
-                if (error) {
-                    console.error('Error deleting event:', error);
-                    setNotice({
-                        tone: 'error',
-                        text: 'Could not delete this event.',
-                    });
-                } else {
-                    onUpdate();
-                    onClose();
-                }
-            },
-        });
-    };
-
-    const [isSending, setIsSending] = useState(false);
-
-    const handleSendMessage = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newMessage.trim() || !user || isSending) return;
-
-        const messageContent = newMessage.trim();
-        setNewMessage(''); // Clear input immediately
-        setIsSending(true);
-
-        // Optimistic update
-        const tempId = `temp-${Date.now()}`;
-        const optimisticMessage: Message = {
-            id: tempId,
-            user_id: user.uid,
-            content: messageContent,
-            created_at: new Date().toISOString(),
-            profiles: {
-                nickname: userNickname || 'Me',
-                email: user.email || '',
-                flair: null // Can fetch if needed, but 'Me' is fine for immediate
-            }
-        };
-
-        setMessages(prev => [...prev, optimisticMessage]);
-        setTimeout(() => scrollToBottom(), 100);
-
-        try {
-            const { error } = await supabase.from('event_messages').insert({
-                event_id: event.id,
-                user_id: user.uid,
-                content: messageContent
-            });
-
-            if (error) {
-                // Rollback on error
-                setMessages(prev => prev.filter(m => m.id !== tempId));
-                setNewMessage(messageContent); // Restore input
-                throw error;
-            }
-
-            // Success - the realtime subscription will replace/dedup the message eventually
-            // but we keep the optimistic one until then or let fetchMessageSender handle de-dupe
-
-        } catch (error) {
-            console.error('Error sending message:', error);
+            setMessages((prev) => prev.filter((m) => m.id !== tempId));
+            setNewMessage(content);
             setNotice({ tone: 'error', text: 'Message not sent. Try again.' });
-        } finally {
-            setIsSending(false);
+            return;
         }
+        // Refetching replaces the optimistic row with the stored one, so the
+        // old hand-written dedupe against `temp-` ids is no longer needed.
+        fetchMessages();
     };
 
-    const handleCloseEvent = async () => {
-        setPendingAction({
-            title: 'Close this event?',
-            body: 'No one new will be able to join.',
-            label: 'Close event',
-            run: async () => {
-                await supabase
-                    .from('local_events')
-                    .update({ is_closed: true })
-                    .eq('id', event.id);
-                onUpdate();
-                onClose();
-            },
-        });
+    const confirm = (
+        title: string,
+        body: string,
+        label: string,
+        run: () => Promise<void> | void,
+    ) => {
+        setShowMenu(false);
+        setPendingAction({ title, body, label, run });
     };
 
-    const handleRemoveUser = async (userId: string) => {
-        setPendingAction({
-            title: 'Remove this person?',
-            body: 'They will no longer be a participant.',
-            label: 'Remove',
-            run: async () => {
-                await supabase
-                    .from('event_participants')
-                    .update({ status: 'removed' })
-                    .eq('event_id', event.id)
-                    .eq('user_id', userId);
-                fetchParticipants();
-            },
-        });
-    };
+    const timing = getTimingLabel(event);
 
-    if (!isOpen) return null;
+    const footer = (() => {
+        if (phase === 'ended') {
+            return (
+                <p className="py-1.5 text-center text-[13px] font-semibold text-muted">
+                    This one is over
+                </p>
+            );
+        }
+        if (event.is_closed) {
+            return (
+                <p className="py-1.5 text-center text-[13px] font-semibold text-muted">
+                    Closed — no one new can join
+                </p>
+            );
+        }
+        if (isCreator) {
+            return (
+                <Button
+                    variant="secondary"
+                    size="lg"
+                    block
+                    onClick={() => setTab('people')}
+                >
+                    <Users size={17} />
+                    {joinedCount} going
+                    {pendingRequests.length > 0 &&
+                        ` · ${pendingRequests.length} waiting`}
+                </Button>
+            );
+        }
+        if (hasJoined) {
+            return (
+                <Button
+                    variant="secondary"
+                    size="lg"
+                    block
+                    onClick={() =>
+                        confirm(
+                            'Leave this event?',
+                            'You can join again later if there is still room.',
+                            'Leave',
+                            async () => {
+                                if (!user) return;
+                                const { error } = await supabase
+                                    .from('event_participants')
+                                    .delete()
+                                    .eq('event_id', event.id)
+                                    .eq('user_id', user.uid);
+                                if (!error) {
+                                    setHasJoined(false);
+                                    onUpdate();
+                                }
+                            },
+                        )
+                    }
+                >
+                    You are going · Leave
+                </Button>
+            );
+        }
+        if (myRequestStatus === 'pending') {
+            return (
+                <p className="py-1.5 text-center text-[13px] font-semibold text-accent">
+                    Waiting for the host to approve
+                </p>
+            );
+        }
+        if (myRequestStatus === 'rejected') {
+            return (
+                <p className="py-1.5 text-center text-[13px] font-semibold text-muted">
+                    The host declined this request
+                </p>
+            );
+        }
+        if (isFull) {
+            return (
+                <p className="py-1.5 text-center text-[13px] font-semibold text-muted">
+                    Full — {joinedCount} of {event.max_participants} joined
+                </p>
+            );
+        }
+        return (
+            <Button size="lg" block loading={busy} onClick={handleJoinClick}>
+                {event.requires_approval ? 'Ask to join' : 'Join'}
+            </Button>
+        );
+    })();
 
     return (
         <>
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white/95 backdrop-blur-xl rounded-[32px] w-full max-w-4xl h-[85vh] overflow-hidden shadow-2xl flex flex-col md:flex-row animate-slide-in border border-white/20 ring-1 ring-black/5">
-
-                {/* LEFT SIDE: Info */}
-                <div className="w-full md:w-1/3 bg-slate-50/50 p-6 border-r border-slate-100/50 flex flex-col overflow-y-auto backdrop-blur-md">
-                    <div className="flex justify-between items-start mb-6">
-                        <div className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide inline-flex items-center gap-1.5 shadow-sm ${event.event_type === 'live' ? 'bg-red-100 text-red-600' : 'bg-purple-100 text-purple-600'
-                            }`}>
-                            {event.event_type === 'live' ? <Zap size={12} /> : <Clock size={12} />}
-                            {event.event_type === 'live' ? 'LIVE' : 'Scheduled'}
-                        </div>
-                        {isCreator && (
-                            <div className="relative group">
-                                <button type="button" className="p-2 hover:bg-slate-200 rounded-full"><MoreVertical size={16} /></button>
-                                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 hidden group-hover:block z-10">
-                                    <button type="button" onClick={handleCloseEvent} className="w-full text-left px-4 py-3 text-red-600 hover:bg-red-50 text-sm flex items-center gap-2">
-                                        <StopCircle size={16} /> Close Event
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <h2 className="text-2xl font-bold text-slate-800 mb-4">{event.title}</h2>
-                    <p className="text-slate-600 mb-6 leading-relaxed">{event.description}</p>
-
-                    <div className="space-y-4 mb-8">
-                        <div className="flex items-center gap-3 text-slate-600">
-                            <MapPin size={20} className="text-slate-400" />
-                            <div>
-                                <div className="font-medium text-sm">Location</div>
-                                <div className="text-sm opacity-80">{event.location}</div>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3 text-slate-600">
-                            <Clock size={20} className="text-slate-400" />
-                            <div>
-                                <div className="font-medium text-sm">Ends In</div>
-                                <div className="text-sm opacity-80">{formatDistanceToNow(new Date(event.end_time))}</div>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3 text-slate-600 cursor-pointer hover:bg-slate-100 p-2 rounded-lg -ml-2" onClick={() => setShowParticipants(!showParticipants)}>
-                            <Users size={20} className="text-slate-400" />
-                            <div>
-                                <div className="font-medium text-sm">Participants</div>
-                                <div className={`text-sm ${isEventFull ? 'text-red-600 font-semibold' : 'opacity-80'}`}>
-                                    {participants.length} {event.max_participants ? `/ ${event.max_participants}` : ''} joined
-                                    {isEventFull && ' - FULL'}
-                                    {!isEventFull && spotsRemaining && spotsRemaining <= 3 && spotsRemaining > 0 && ` (${spotsRemaining} spots left)`}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="mt-auto">
-                        {event.is_closed ? (
-                            <div className="w-full py-3 bg-slate-200 text-slate-500 rounded-xl font-bold text-center">Event Closed</div>
-                        ) : isEventFull && !hasJoined && !isCreator ? (
-                            <div className="w-full py-3 bg-red-50 text-red-600 rounded-xl font-bold text-center border-2 border-red-200">
-                                Event Full ({participants.length}/{event.max_participants})
-                            </div>
-                        ) : isCreator ? (
-                            <button type="button" onClick={handleDeleteEvent} className="w-full py-3 border-2 border-red-100 text-red-600 hover:bg-red-50 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
-                                <Trash2 size={20} /> Delete Event
-                            </button>
-                        ) : hasJoined ? (
-                            <button type="button" onClick={handleLeave} className="w-full py-3 border-2 border-red-100 text-red-500 hover:bg-red-50 rounded-xl font-bold transition-colors">
-                                Leave Event
-                            </button>
-                        ) : myRequestStatus === 'pending' ? (
-                            <div className="w-full py-3 bg-orange-50 text-orange-600 rounded-xl font-bold text-center border-2 border-orange-100">
-                                Request Pending
-                            </div>
-                        ) : myRequestStatus === 'rejected' ? (
-                            <div className="w-full py-3 bg-red-50 text-red-600 rounded-xl font-bold text-center border-2 border-red-100">
-                                Request Rejected
-                            </div>
-                        ) : (
-                            <button
-                                type="button"
-                                onClick={handleJoinClick}
-                                disabled={loading || isEventFull}
-                                className={`w-full py-3.5 rounded-xl font-bold shadow-lg transition-all active:scale-[0.98] ${loading || isEventFull
-                                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                                    : 'bg-gradient-to-r from-[#5A4FCF] to-[#7a71e6] hover:brightness-110 text-white shadow-purple-200'
-                                    }`}
-                            >
-                                {loading ? 'Processing...' : event.requires_approval ? 'Request to Join' : 'Join Event'}
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                {/* RIGHT SIDE: Chat / Participants */}
-                <div className="flex-1 flex flex-col bg-white/80 relative backdrop-blur-sm">
-                    <div className="p-4 border-b border-slate-100/50 flex justify-between items-center bg-white/50 backdrop-blur-md sticky top-0 z-10">
-                        <div className="flex gap-4">
-                            <button
-                                type="button"
-                                onClick={() => setShowParticipants(false)}
-                                className={`font-bold ${!showParticipants ? 'text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
-                            >
-                                Chat
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setShowParticipants(true)}
-                                className={`font-bold ${showParticipants ? 'text-slate-800' : 'text-slate-400 hover:text-slate-600'} flex items-center gap-2`}
-                            >
-                                Participants
-                                {pendingRequests.length > 0 && isCreator && (
-                                    <span className="bg-orange-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                                        {pendingRequests.length}
-                                    </span>
-                                )}
-                            </button>
-                        </div>
-                        <button type="button" onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full"><X size={20} /></button>
-                    </div>
-
-                    {showParticipants ? (
-                        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                            {/* Pending Requests Section (Creator Only) */}
-                            {isCreator && pendingRequests.length > 0 && (
-                                <div>
-                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Pending Requests</h4>
-                                    <div className="space-y-3">
-                                        {pendingRequests.map(p => (
-                                            <div key={p.user_id} className="bg-orange-50 p-3 rounded-xl border border-orange-100">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-full bg-orange-200 text-orange-700 flex items-center justify-center font-bold text-xs">
-                                                            {p.profiles.nickname?.[0]?.toUpperCase() || '?'}
-                                                        </div>
-                                                        <div className="flex flex-col">
-                                                            <UserDisplay
-                                                                nickname={p.profiles.nickname}
-                                                                flair={p.profiles.flair}
-                                                                email={p.profiles.email}
-                                                                className="text-slate-800"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleReject(p.user_id)}
-                                                            className="p-2 bg-white text-red-500 rounded-lg shadow-sm hover:bg-red-50"
-                                                            title="Reject"
-                                                        >
-                                                            <X size={16} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleApprove(p.user_id)}
-                                                            className="p-2 bg-white text-green-600 rounded-lg shadow-sm hover:bg-green-50"
-                                                            title="Approve"
-                                                        >
-                                                            <Check size={16} />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                {p.request_message && (
-                                                    <div className="text-sm text-slate-600 bg-white/50 p-2 rounded-lg italic">
-                                                        &ldquo;{p.request_message}&rdquo;
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Active Participants */}
-                            <div>
-                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-                                    Joined ({participants.length})
-                                </h4>
-                                <div className="space-y-2">
-                                    {participants.map(p => (
-                                        <div key={p.user_id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-xs">
-                                                    {p.profiles.nickname?.[0]?.toUpperCase() || '?'}
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <UserDisplay
-                                                        nickname={p.profiles.nickname}
-                                                        flair={p.profiles.flair}
-                                                        email={p.profiles.email}
-                                                        className="text-slate-800"
-                                                    />
-                                                </div>
-                                            </div>
-                                            {isCreator && p.user_id !== user?.uid && (
-                                                <button type="button" onClick={() => handleRemoveUser(p.user_id)} className="text-red-400 hover:text-red-600 p-2">
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <>
-                            {canViewChat ? (
-                                <>
-                                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#f8f9fc]/50">
-                                        {messages.map((msg) => {
-                                            const isMe = msg.user_id === user?.uid;
-                                            return (
-                                                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${msg.skipAnimation ? '' : 'animate-slide-in'}`}>
-                                                    <div className={`max-w-[80%] ${isMe
-                                                        ? 'bg-gradient-to-br from-[#5A4FCF] to-[#7a71e6] text-white rounded-br-sm shadow-purple-100'
-                                                        : 'bg-white text-slate-800 border border-slate-100 rounded-bl-sm shadow-sm'
-                                                        } p-3.5 rounded-2xl shadow-md transition-all hover:shadow-lg`}>
-                                                        {!isMe && (
-                                                            <div className="mb-1.5 flex items-center gap-2 border-b border-black/5 pb-1">
-                                                                <UserDisplay
-                                                                    nickname={msg.profiles.nickname}
-                                                                    flair={msg.profiles.flair}
-                                                                    email={msg.profiles.email}
-                                                                    className="opacity-90 font-medium"
-                                                                />
-                                                            </div>
-                                                        )}
-                                                        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</div>
-                                                        <div className={`text-[10px] mt-1.5 text-right ${isMe ? 'text-white/70' : 'text-slate-400'}`}>
-                                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                        <div ref={messagesEndRef} />
-                                    </div>
-
-                                    <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-100/50 bg-white/80 backdrop-blur-md">
-                                        {!canSendMessages ? (
-                                            <div className="text-center py-3 bg-slate-50 rounded-xl border border-slate-200/50">
-                                                <p className="text-sm text-slate-500 font-medium">
-                                                    {!user ? 'Sign in to chat' :
-                                                        !userNickname ? 'Set a nickname to chat' :
-                                                            !hasJoined && !isCreator ? 'Join the event to chat' : 'Loading...'}
-                                                </p>
-                                            </div>
-                                        ) : (
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Type a message..."
-                                                    className="flex-1 px-4 py-3.5 bg-slate-50 border-slate-200/50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#5A4FCF]/20 focus:border-[#5A4FCF]/30 transition-all placeholder:text-slate-400"
-                                                    value={newMessage}
-                                                    onChange={e => setNewMessage(e.target.value)}
-                                                    disabled={!canSendMessages}
-                                                />
-                                                <button
-                                                    type="submit"
-                                                    className={`p-3.5 ${isSending || !canSendMessages
-                                                        ? 'bg-slate-200 text-slate-400'
-                                                        : 'bg-[#5A4FCF] hover:bg-[#4a3fc1] text-white shadow-lg shadow-purple-200 active:scale-95'
-                                                        } rounded-xl transition-all duration-200`}
-                                                    disabled={isSending || !canSendMessages}
-                                                >
-                                                    {isSending ? (
-                                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                                    ) : (
-                                                        <Send size={20} />
-                                                    )}
-                                                </button>
-                                            </div>
-                                        )}
-                                    </form>
-                                </>
-                            ) : (
-                                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 text-center">
-                                    <Lock size={48} className="mb-4 opacity-20" />
-                                    <p>This is a private event.</p>
-                                    <p className="text-sm">Join to see the chat.</p>
-                                </div>
-                            )}
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {/* Feedback for actions taken outside the join dialog. */}
-            {notice && !showJoinModal && (
-                <div className="absolute inset-x-4 top-4 z-[55]">
+            <FullSheet
+                open={isOpen}
+                onClose={onClose}
+                title={event.title}
+                subtitle={
+                    <span className="flex items-center gap-1.5">
+                        {isLive ? <Zap size={12} /> : <CalendarDays size={12} />}
+                        {timing}
+                    </span>
+                }
+                headerRight={
+                    isCreator ? (
+                        <button
+                            type="button"
+                            onClick={() => setShowMenu(true)}
+                            aria-label="Event options"
+                            className="press tap flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted hover:bg-surface-2 hover:text-foreground"
+                        >
+                            <MoreVertical size={20} />
+                        </button>
+                    ) : undefined
+                }
+                toolbar={
+                    <SheetTabs
+                        value={tab}
+                        onChange={setTab}
+                        tabs={[
+                            { id: 'about', label: 'About' },
+                            { id: 'chat', label: 'Chat' },
+                            {
+                                id: 'people',
+                                label: 'People',
+                                badge: isCreator ? pendingRequests.length : 0,
+                            },
+                        ]}
+                    />
+                }
+                footer={footer}
+                bodyClassName={
+                    tab === 'chat'
+                        ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+                        : undefined
+                }
+            >
+                {notice && tab !== 'chat' && (
                     <button
                         type="button"
                         onClick={() => setNotice(null)}
-                        className="block w-full text-left"
+                        className="mb-3 block w-full text-left"
                         aria-label="Dismiss message"
                     >
                         <Notice tone={notice.tone}>{notice.text}</Notice>
                     </button>
-                </div>
-            )}
+                )}
 
-            {/* Join Request Modal */}
-            {showJoinModal && (
-                <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-in">
-                        <h3 className="text-lg font-bold text-slate-800 mb-2">Request to Join</h3>
-                        <p className="text-sm text-slate-500 mb-4">This event requires approval. Add a message for the host.</p>
+                {tab === 'about' && (
+                    <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
+                        <div className="flex flex-wrap gap-2">
+                            <Tag
+                                tone={isLive ? 'live' : 'planned'}
+                                icon={
+                                    isLive ? (
+                                        <Zap size={12} />
+                                    ) : (
+                                        <CalendarDays size={12} />
+                                    )
+                                }
+                            >
+                                {isLive ? 'Happening now' : 'Planned'}
+                            </Tag>
+                            <Tag
+                                tone="neutral"
+                                icon={
+                                    event.is_private ? (
+                                        <Lock size={12} />
+                                    ) : (
+                                        <Globe size={12} />
+                                    )
+                                }
+                            >
+                                {event.is_private ? 'Private chat' : 'Open chat'}
+                            </Tag>
+                            {event.requires_approval && (
+                                <Tag tone="neutral" icon={<Check size={12} />}>
+                                    Host approves
+                                </Tag>
+                            )}
+                        </div>
 
-                        {notice && (
-                            <div className="mb-3">
-                                <Notice tone={notice.tone}>{notice.text}</Notice>
-                            </div>
+                        {event.description && (
+                            <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-foreground">
+                                {event.description}
+                            </p>
                         )}
 
-                        {/* Replaces the window.prompt() that used to ask for
-                            a nickname before joining. */}
-                        {needsNickname && (
-                            <div className="mb-3">
-                                <label
-                                    htmlFor="join-nickname"
-                                    className="mb-1.5 block text-sm font-medium text-slate-700"
-                                >
-                                    Choose a nickname
-                                </label>
-                                <input
-                                    id="join-nickname"
-                                    type="text"
+                        <dl className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+                            <Row icon={<MapPin size={17} />} label="Where">
+                                {event.location}
+                                {event.area ? ` · ${event.area}` : ''}
+                            </Row>
+                            <Row icon={<Clock size={17} />} label="When">
+                                {formatWhen(event.start_time)}
+                                <span className="mt-0.5 block text-[12px] font-normal text-muted">
+                                    {timing}
+                                </span>
+                            </Row>
+                            <Row icon={<Users size={17} />} label="Who">
+                                {joinedCount} going
+                                {event.max_participants
+                                    ? ` of ${event.max_participants}`
+                                    : ''}
+                                {spotsLeft !== null &&
+                                    spotsLeft > 0 &&
+                                    spotsLeft <= 3 && (
+                                        <span className="mt-0.5 block text-[12px] font-semibold text-accent">
+                                            Only {spotsLeft} spot
+                                            {spotsLeft === 1 ? '' : 's'} left
+                                        </span>
+                                    )}
+                            </Row>
+                        </dl>
+
+                        {event.latitude != null && event.longitude != null && (
+                            <a
+                                href={`https://www.google.com/maps/search/?api=1&query=${event.latitude},${event.longitude}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="press flex items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-[14px] font-semibold text-primary"
+                            >
+                                <MapPin size={16} />
+                                Open in Maps
+                            </a>
+                        )}
+
+                        <p className="text-[12px] leading-relaxed text-faint">
+                            Meeting someone new? Pick a public spot, and tell a
+                            friend where you are going.
+                        </p>
+                    </div>
+                )}
+
+                {tab === 'chat' &&
+                    (canViewChat ? (
+                        <>
+                            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+                                <div className="mx-auto flex w-full max-w-lg flex-col gap-2.5">
+                                    {messages.length === 0 && (
+                                        <p className="py-8 text-center text-[13px] text-faint">
+                                            No messages yet. Say hello.
+                                        </p>
+                                    )}
+                                    {messages.map((msg) => {
+                                        const mine = msg.user_id === user?.uid;
+                                        return (
+                                            <div
+                                                key={msg.id}
+                                                className={`flex ${mine ? 'justify-end' : 'justify-start'}`}
+                                            >
+                                                <div
+                                                    className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 ${
+                                                        mine
+                                                            ? 'rounded-br-md bg-primary text-primary-foreground'
+                                                            : 'rounded-bl-md border border-line bg-surface text-foreground'
+                                                    } ${msg.pending ? 'opacity-60' : ''}`}
+                                                >
+                                                    {!mine && (
+                                                        <p className="mb-1 text-[12px] font-bold text-primary">
+                                                            {msg.profiles.nickname ??
+                                                                'Someone'}
+                                                            {msg.profiles.flair
+                                                                ? ` ${msg.profiles.flair}`
+                                                                : ''}
+                                                        </p>
+                                                    )}
+                                                    <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed">
+                                                        {msg.content}
+                                                    </p>
+                                                    <p
+                                                        className={`mt-1 text-right text-[10px] ${mine ? 'text-primary-foreground/70' : 'text-faint'}`}
+                                                    >
+                                                        {new Date(
+                                                            msg.created_at,
+                                                        ).toLocaleTimeString(
+                                                            'en-IN',
+                                                            {
+                                                                hour: 'numeric',
+                                                                minute: '2-digit',
+                                                            },
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    <div ref={messagesEndRef} />
+                                </div>
+                            </div>
+
+                            <div className="shrink-0 border-t border-line bg-surface px-4 py-3">
+                                {notice && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setNotice(null)}
+                                        className="mb-2 block w-full text-left"
+                                        aria-label="Dismiss message"
+                                    >
+                                        <Notice tone={notice.tone}>
+                                            {notice.text}
+                                        </Notice>
+                                    </button>
+                                )}
+                                {canSend ? (
+                                    <form
+                                        onSubmit={sendMessage}
+                                        className="mx-auto flex w-full max-w-lg gap-2"
+                                    >
+                                        <TextInput
+                                            value={newMessage}
+                                            onChange={(e) =>
+                                                setNewMessage(e.target.value)
+                                            }
+                                            maxLength={1000}
+                                            placeholder="Message the group…"
+                                            aria-label="Message"
+                                        />
+                                        <Button
+                                            type="submit"
+                                            aria-label="Send"
+                                            disabled={!newMessage.trim()}
+                                            loading={sending}
+                                            className="h-12 w-12 shrink-0 rounded-xl px-0"
+                                        >
+                                            {!sending && <Send size={18} />}
+                                        </Button>
+                                    </form>
+                                ) : (
+                                    <p className="py-1.5 text-center text-[13px] text-muted">
+                                        {!user
+                                            ? 'Sign in to join the conversation'
+                                            : 'Join this event to chat'}
+                                    </p>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <EmptyState
+                            icon={Lock}
+                            title="Private conversation"
+                            description="Join this event to read and take part in the chat."
+                        />
+                    ))}
+
+                {tab === 'people' && (
+                    <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
+                        {isCreator && pendingRequests.length > 0 && (
+                            <section>
+                                <h3 className="mb-2 text-[12px] font-bold uppercase tracking-wide text-faint">
+                                    Waiting for you ({pendingRequests.length})
+                                </h3>
+                                <ul className="flex flex-col gap-2">
+                                    {pendingRequests.map((p) => (
+                                        <li
+                                            key={p.user_id}
+                                            className="rounded-2xl border border-accent/30 bg-accent-soft/30 p-3"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <UserDisplay
+                                                    nickname={p.profiles.nickname}
+                                                    flair={p.profiles.flair}
+                                                    className="min-w-0 flex-1"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        confirm(
+                                                            'Decline this request?',
+                                                            'They will not be able to join.',
+                                                            'Decline',
+                                                            async () => {
+                                                                await supabase
+                                                                    .from(
+                                                                        'event_participants',
+                                                                    )
+                                                                    .update({
+                                                                        status: 'rejected',
+                                                                    })
+                                                                    .eq(
+                                                                        'event_id',
+                                                                        event.id,
+                                                                    )
+                                                                    .eq(
+                                                                        'user_id',
+                                                                        p.user_id,
+                                                                    );
+                                                                fetchPendingRequests();
+                                                            },
+                                                        )
+                                                    }
+                                                    aria-label={`Decline ${p.profiles.nickname ?? 'request'}`}
+                                                    className="press tap flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-danger"
+                                                >
+                                                    <X size={17} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        approve(p.user_id)
+                                                    }
+                                                    aria-label={`Approve ${p.profiles.nickname ?? 'request'}`}
+                                                    className="press tap flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success text-white"
+                                                >
+                                                    <Check size={17} />
+                                                </button>
+                                            </div>
+                                            {p.request_message && (
+                                                <p className="mt-2 rounded-xl bg-surface px-3 py-2 text-[13px] italic leading-relaxed text-muted">
+                                                    &ldquo;{p.request_message}&rdquo;
+                                                </p>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </section>
+                        )}
+
+                        <section>
+                            <h3 className="mb-2 text-[12px] font-bold uppercase tracking-wide text-faint">
+                                Going ({joinedCount})
+                            </h3>
+                            {joinedCount === 0 ? (
+                                <p className="py-6 text-center text-[13px] text-faint">
+                                    Nobody has joined yet.
+                                </p>
+                            ) : (
+                                <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+                                    {participants.map((p) => (
+                                        <li
+                                            key={p.user_id}
+                                            className="flex items-center gap-2 px-3 py-2.5"
+                                        >
+                                            {/* UserDisplay already draws the
+                                                avatar. A second circle used to
+                                                sit beside it, so every row
+                                                showed two initials. */}
+                                            <UserDisplay
+                                                nickname={p.profiles.nickname}
+                                                flair={p.profiles.flair}
+                                                className="min-w-0 flex-1"
+                                            />
+                                            {p.user_id === event.creator_id && (
+                                                <span className="shrink-0 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-bold text-primary">
+                                                    Host
+                                                </span>
+                                            )}
+                                            {isCreator &&
+                                                p.user_id !== user?.uid && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            confirm(
+                                                                'Remove this person?',
+                                                                'They will no longer be a participant.',
+                                                                'Remove',
+                                                                async () => {
+                                                                    await supabase
+                                                                        .from(
+                                                                            'event_participants',
+                                                                        )
+                                                                        .update({
+                                                                            status: 'removed',
+                                                                        })
+                                                                        .eq(
+                                                                            'event_id',
+                                                                            event.id,
+                                                                        )
+                                                                        .eq(
+                                                                            'user_id',
+                                                                            p.user_id,
+                                                                        );
+                                                                    fetchParticipants();
+                                                                    onUpdate();
+                                                                },
+                                                            )
+                                                        }
+                                                        aria-label={`Remove ${p.profiles.nickname ?? 'participant'}`}
+                                                        className="press tap flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted hover:bg-surface-2 hover:text-danger"
+                                                    >
+                                                        <UserMinus size={17} />
+                                                    </button>
+                                                )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </section>
+                    </div>
+                )}
+            </FullSheet>
+
+            {/* Host menu. This was a `hidden group-hover:block` dropdown, which
+                no touch device can open at all. */}
+            <Sheet
+                open={showMenu}
+                onClose={() => setShowMenu(false)}
+                title="Event options"
+            >
+                <div className="flex flex-col gap-2">
+                    {!event.is_closed && (
+                        <Button
+                            variant="secondary"
+                            size="lg"
+                            block
+                            onClick={() =>
+                                confirm(
+                                    'Close this event?',
+                                    'It stays visible, but no one new can join.',
+                                    'Close it',
+                                    async () => {
+                                        await supabase
+                                            .from('local_events')
+                                            .update({ is_closed: true })
+                                            .eq('id', event.id);
+                                        onUpdate();
+                                        onClose();
+                                    },
+                                )
+                            }
+                        >
+                            <StopCircle size={17} />
+                            Stop new people joining
+                        </Button>
+                    )}
+                    <Button
+                        variant="danger"
+                        size="lg"
+                        block
+                        onClick={() =>
+                            confirm(
+                                'Delete this event?',
+                                'It will be removed for everyone. This cannot be undone.',
+                                'Delete',
+                                async () => {
+                                    const { error } = await supabase
+                                        .from('local_events')
+                                        .delete()
+                                        .eq('id', event.id);
+                                    if (error) {
+                                        setNotice({
+                                            tone: 'error',
+                                            text: 'Could not delete this event.',
+                                        });
+                                        return;
+                                    }
+                                    onUpdate();
+                                    onClose();
+                                },
+                            )
+                        }
+                    >
+                        <Trash2 size={17} />
+                        Delete event
+                    </Button>
+                </div>
+            </Sheet>
+
+            <Sheet
+                open={showJoinSheet}
+                onClose={() => setShowJoinSheet(false)}
+                title={event.requires_approval ? 'Ask to join' : 'Join this event'}
+            >
+                <div className="flex flex-col gap-4">
+                    {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
+
+                    {!nickname && (
+                        <Field
+                            label="Your nickname"
+                            hint="What everyone here will see. Your real name and email stay private."
+                            required
+                        >
+                            {(id) => (
+                                <TextInput
+                                    id={id}
                                     value={nicknameDraft}
-                                    onChange={(e) => setNicknameDraft(e.target.value)}
+                                    onChange={(e) =>
+                                        setNicknameDraft(e.target.value)
+                                    }
                                     maxLength={30}
                                     placeholder="What should people call you?"
-                                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-base focus:border-purple-500 focus:outline-none"
                                 />
-                            </div>
-                        )}
+                            )}
+                        </Field>
+                    )}
 
-                        <form onSubmit={handleJoinRequest}>
-                            <textarea
-                                className="w-full p-3 bg-slate-50 rounded-xl border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all text-sm mb-4 resize-none"
-                                rows={3}
-                                placeholder="Hi! I'd love to join..."
-                                value={joinMessage}
-                                onChange={e => setJoinMessage(e.target.value)}
-                                autoFocus
-                            />
-                            <div className="flex gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowJoinModal(false)}
-                                    className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-semibold rounded-xl hover:bg-slate-200 transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="flex-1 py-2.5 bg-[#5A4FCF] text-white font-bold rounded-xl hover:bg-[#4a3fc1] transition-colors shadow-lg shadow-purple-200"
-                                >
-                                    {loading ? 'Sending...' : 'Send Request'}
-                                </button>
-                            </div>
-                        </form>
+                    {event.requires_approval && (
+                        <Field
+                            label="Message to the host"
+                            hint="Optional, but it helps them say yes."
+                        >
+                            {(id) => (
+                                <TextArea
+                                    id={id}
+                                    rows={3}
+                                    value={joinMessage}
+                                    onChange={(e) => setJoinMessage(e.target.value)}
+                                    maxLength={300}
+                                    placeholder="Hi! I run most weekends, would love to come along."
+                                />
+                            )}
+                        </Field>
+                    )}
+
+                    <div className="flex gap-2">
+                        <Button
+                            variant="secondary"
+                            block
+                            onClick={() => setShowJoinSheet(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button block loading={busy} onClick={doJoin}>
+                            {event.requires_approval ? 'Send request' : 'Join'}
+                        </Button>
                     </div>
                 </div>
-            )}
-        </div>
-            {/* Replaces window.confirm() */}
+            </Sheet>
+
             <Sheet
                 open={!!pendingAction}
                 onClose={() => setPendingAction(null)}
@@ -1056,5 +1095,53 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 </div>
             </Sheet>
         </>
+    );
+}
+
+function Row({
+    icon,
+    label,
+    children,
+}: {
+    icon: React.ReactNode;
+    label: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <div className="flex items-start gap-3 px-4 py-3">
+            <span className="mt-0.5 shrink-0 text-faint">{icon}</span>
+            <div className="min-w-0 flex-1">
+                <dt className="text-[11px] font-bold uppercase tracking-wide text-faint">
+                    {label}
+                </dt>
+                <dd className="mt-0.5 text-[14px] font-semibold leading-snug text-foreground">
+                    {children}
+                </dd>
+            </div>
+        </div>
+    );
+}
+
+function Tag({
+    tone,
+    icon,
+    children,
+}: {
+    tone: 'live' | 'planned' | 'neutral';
+    icon: React.ReactNode;
+    children: React.ReactNode;
+}) {
+    const tones = {
+        live: 'bg-cat-emergency-soft text-cat-emergency',
+        planned: 'bg-cat-social-soft text-cat-social',
+        neutral: 'bg-surface-2 text-muted',
+    };
+    return (
+        <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${tones[tone]}`}
+        >
+            {icon}
+            {children}
+        </span>
     );
 }

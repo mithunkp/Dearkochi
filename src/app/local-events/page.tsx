@@ -14,14 +14,15 @@ import { EmptyState, ErrorState } from '@/components/ui/EmptyState';
 import { SkeletonCard, LoadingAnnouncer } from '@/components/ui/Skeleton';
 import { Sheet } from '@/components/ui/Sheet';
 import { Button } from '@/components/ui/Button';
+import { getEventPhase } from '@/lib/event-time';
 
 type Filter = 'all' | 'live' | 'scheduled' | 'my-events';
 
 const FILTERS: { id: Filter; label: string; icon: typeof LayoutGrid }[] = [
-    { id: 'all', label: 'Discover', icon: LayoutGrid },
-    { id: 'live', label: 'Live now', icon: Zap },
-    { id: 'scheduled', label: 'Scheduled', icon: CalendarDays },
-    { id: 'my-events', label: 'My events', icon: UserIcon },
+    { id: 'all', label: 'Everything', icon: LayoutGrid },
+    { id: 'live', label: 'On now', icon: Zap },
+    { id: 'scheduled', label: 'Planned', icon: CalendarDays },
+    { id: 'my-events', label: 'Mine', icon: UserIcon },
 ];
 
 export default function LocalEventsPage() {
@@ -29,6 +30,7 @@ export default function LocalEventsPage() {
     const { user, loading: authLoading } = useAuth();
 
     const [events, setEvents] = useState<LocalEvent[]>([]);
+    const [joinedIds, setJoinedIds] = useState<Set<string>>(new Set());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<Filter>('all');
@@ -40,36 +42,50 @@ export default function LocalEventsPage() {
     const fetchEvents = useCallback(async () => {
         setError(null);
         try {
-            const { data, error: eventsError } = await supabase
+            /*
+             * Signed-out visitors see public events only. The page used to
+             * redirect them straight to /login, so nobody could find out what
+             * this section was before creating an account — and search engines
+             * saw nothing at all.
+             */
+            let query = supabase
                 .from('local_events')
                 .select('*')
                 .gt('end_time', new Date().toISOString())
                 .order('start_time', { ascending: true });
 
+            if (!user) query = query.eq('is_private', false);
+
+            const { data, error: eventsError } = await query;
             if (eventsError) throw eventsError;
 
             const rows = (data ?? []) as LocalEvent[];
 
-            // One query for every participant row, counted in memory.
-            // Previously this issued a separate count query per event, so a
-            // page of 30 events meant 31 round trips.
+            // One query for every participant row, counted in memory. Issuing
+            // a count per event meant 31 round trips for a page of 30.
             const ids = rows.map((e) => e.id);
             const counts = new Map<string, number>();
+            const mine = new Set<string>();
 
             if (ids.length > 0) {
                 const { data: parts, error: partsError } = await supabase
                     .from('event_participants')
-                    .select('event_id')
+                    .select('event_id, user_id')
                     .eq('status', 'joined')
                     .in('event_id', ids);
 
                 if (partsError) throw partsError;
 
-                for (const row of (parts ?? []) as { event_id: string }[]) {
+                for (const row of (parts ?? []) as {
+                    event_id: string;
+                    user_id: string;
+                }[]) {
                     counts.set(row.event_id, (counts.get(row.event_id) ?? 0) + 1);
+                    if (user && row.user_id === user.uid) mine.add(row.event_id);
                 }
             }
 
+            setJoinedIds(mine);
             setEvents(
                 rows.map((e) => ({
                     ...e,
@@ -82,23 +98,16 @@ export default function LocalEventsPage() {
         } finally {
             setLoading(false);
         }
-    }, []);
-
-    // Redirect unauthenticated visitors once auth has actually resolved.
-    useEffect(() => {
-        if (!authLoading && !user) {
-            router.push('/login?redirect=/local-events');
-        }
-    }, [authLoading, user, router]);
+    }, [user]);
 
     useEffect(() => {
-        if (!user) return;
+        if (authLoading) return;
         fetchEvents();
-    }, [user, fetchEvents]);
+    }, [authLoading, fetchEvents]);
 
-    // Subscribe once per signed-in user, not on every router change.
+    // Subscribe once auth has settled, not on every router change.
     useEffect(() => {
-        if (!user) return;
+        if (authLoading) return;
         const channel = supabase
             .channel('local_events_changes')
             .on(
@@ -116,7 +125,7 @@ export default function LocalEventsPage() {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user, fetchEvents]);
+    }, [authLoading, fetchEvents]);
 
     const confirmDelete = async () => {
         if (!pendingDelete) return;
@@ -136,24 +145,33 @@ export default function LocalEventsPage() {
         }
     };
 
+    const requireSignIn = () => router.push('/login?redirect=/local-events');
+
     const visible = events.filter((e) => {
         if (filter === 'all') return true;
-        if (filter === 'my-events') return !!user && e.creator_id === user.uid;
-        return e.event_type === filter;
+        if (filter === 'my-events') {
+            return !!user && (e.creator_id === user.uid || joinedIds.has(e.id));
+        }
+        // "On now" means actually running, not merely typed as live — a live
+        // event whose hours are up used to keep showing under that filter.
+        if (filter === 'live') return getEventPhase(e) === 'happening';
+        return getEventPhase(e) === 'upcoming';
     });
 
-    const busy = authLoading || (loading && !!user);
+    const busy = authLoading || loading;
 
     return (
         <div className="mx-auto w-full max-w-6xl pb-10">
             <div className="page-x pt-5">
                 <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
-                    {filter === 'my-events' ? 'My events' : 'Local events'}
+                    Meet up
                 </h1>
-                <p className="mt-1 text-sm text-muted">
-                    {filter === 'my-events'
-                        ? 'Events you created.'
-                        : "What's happening in Kochi right now."}
+                {/* One line that says what this actually is. The old copy read
+                    "What's happening in Kochi right now", which sounds like a
+                    news feed rather than an invitation. */}
+                <p className="mt-1 text-sm leading-relaxed text-muted">
+                    Things people in Kochi are doing, that you can join. Post
+                    one yourself and see who turns up.
                 </p>
             </div>
 
@@ -163,7 +181,11 @@ export default function LocalEventsPage() {
                         <Chip
                             key={f.id}
                             active={filter === f.id}
-                            onClick={() => setFilter(f.id)}
+                            onClick={() =>
+                                f.id === 'my-events' && !user
+                                    ? requireSignIn()
+                                    : setFilter(f.id)
+                            }
                         >
                             <f.icon size={14} />
                             {f.label}
@@ -181,7 +203,7 @@ export default function LocalEventsPage() {
                         <LoadingAnnouncer label="Loading events" />
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             {Array.from({ length: 3 }).map((_, i) => (
-                                <SkeletonCard key={i} className="h-44" />
+                                <SkeletonCard key={i} className="h-48" />
                             ))}
                         </div>
                     </>
@@ -192,18 +214,22 @@ export default function LocalEventsPage() {
                         icon={CalendarDays}
                         title={
                             filter === 'my-events'
-                                ? 'You have no events'
-                                : 'No active events'
+                                ? 'Nothing of yours yet'
+                                : 'Nothing on right now'
                         }
                         description={
                             filter === 'my-events'
-                                ? 'Create one and it will show up here.'
-                                : 'Be the first to put something on the calendar.'
+                                ? 'Events you create or join will show up here.'
+                                : 'Be the first. A walk, a coffee, a game — anything someone else might come to.'
                         }
                         action={
-                            <Button onClick={() => setCreateOpen(true)}>
+                            <Button
+                                onClick={() =>
+                                    user ? setCreateOpen(true) : requireSignIn()
+                                }
+                            >
                                 <Plus size={16} />
-                                Create an event
+                                Start something
                             </Button>
                         }
                     />
@@ -214,6 +240,7 @@ export default function LocalEventsPage() {
                                 key={event.id}
                                 event={event}
                                 index={i}
+                                joined={joinedIds.has(event.id)}
                                 onClick={() => setSelected(event)}
                                 onDelete={
                                     user && event.creator_id === user.uid
@@ -228,8 +255,8 @@ export default function LocalEventsPage() {
 
             <button
                 type="button"
-                onClick={() => setCreateOpen(true)}
-                aria-label="Create an event"
+                onClick={() => (user ? setCreateOpen(true) : requireSignIn())}
+                aria-label="Start something"
                 className="press fixed right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-e3"
                 style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
             >
