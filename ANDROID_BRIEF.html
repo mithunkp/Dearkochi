@@ -1,0 +1,735 @@
+<title>Dear Kochi Android Brief</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ground:#F6F8FB;
+  --surface:#FFFFFF;
+  --surface-2:#EDF1F7;
+  --surface-3:#E2E8F1;
+  --ink:#131821;
+  --ink-2:#3B4454;
+  --ink-3:#6A7487;
+  --line:#DCE3ED;
+  --line-2:#C2CBDA;
+  --accent:#2A4BA0;
+  --accent-deep:#1B3373;
+  --accent-soft:#E4EAF8;
+  --danger:#AE2A20;
+  --danger-soft:#FAE4E1;
+  --warn:#87590A;
+  --warn-soft:#FAEEDA;
+  --ok:#1C6647;
+  --ok-soft:#DEEEE6;
+  --shadow:0 1px 2px rgba(19,24,33,.05), 0 10px 26px -18px rgba(19,24,33,.28);
+  --f-sans:"IBM Plex Sans",-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono","SFMono-Regular",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0B0F16;
+    --surface:#131926;
+    --surface-2:#1A2231;
+    --surface-3:#232D3F;
+    --ink:#E7ECF4;
+    --ink-2:#AEB8C8;
+    --ink-3:#7C8799;
+    --line:#232C3B;
+    --line-2:#354154;
+    --accent:#7FA0EA;
+    --accent-deep:#A8C0F5;
+    --accent-soft:#16233D;
+    --danger:#EE8C80;
+    --danger-soft:#33150F;
+    --warn:#DFAF57;
+    --warn-soft:#2E2310;
+    --ok:#68C39A;
+    --ok-soft:#102C20;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 26px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0B0F16;
+  --surface:#131926;
+  --surface-2:#1A2231;
+  --surface-3:#232D3F;
+  --ink:#E7ECF4;
+  --ink-2:#AEB8C8;
+  --ink-3:#7C8799;
+  --line:#232C3B;
+  --line-2:#354154;
+  --accent:#7FA0EA;
+  --accent-deep:#A8C0F5;
+  --accent-soft:#16233D;
+  --danger:#EE8C80;
+  --danger-soft:#33150F;
+  --warn:#DFAF57;
+  --warn-soft:#2E2310;
+  --ok:#68C39A;
+  --ok-soft:#102C20;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 26px -18px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--f-sans);font-size:15.5px;line-height:1.65;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;line-height:1.2;text-wrap:balance;font-weight:600}
+p,ul,ol,dl{margin:0}
+a{color:var(--accent);text-underline-offset:3px}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+code{font-family:var(--f-mono);font-size:.87em;background:var(--surface-2);padding:.1em .36em;border-radius:4px;color:var(--ink-2);word-break:break-word}
+
+.shell{max-width:1220px;margin:0 auto;padding:0 20px}
+.layout{display:grid;grid-template-columns:1fr;gap:0}
+@media (min-width:1000px){
+  .layout{grid-template-columns:214px minmax(0,1fr);gap:48px;align-items:start}
+  .toc{position:sticky;top:0;padding:40px 0;max-height:100vh;overflow-y:auto}
+}
+.toc{display:none}
+@media (min-width:1000px){.toc{display:block}}
+.toc-h{font-family:var(--f-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin-bottom:12px}
+.toc ol{list-style:none;padding:0;display:flex;flex-direction:column;gap:1px}
+.toc a{display:flex;gap:9px;padding:5px 8px;border-radius:6px;font-size:13px;color:var(--ink-2);text-decoration:none;line-height:1.35}
+.toc a:hover{background:var(--surface-2);color:var(--accent)}
+.toc a b{font-family:var(--f-mono);font-size:11px;color:var(--ink-3);font-weight:500;flex:0 0 16px}
+
+header.top{padding:44px 0 8px}
+.kicker{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.kicker i{font-style:normal;color:var(--line-2)}
+h1{font-size:clamp(1.95rem,4.6vw,2.75rem);font-weight:700;letter-spacing:-.026em;margin-top:12px}
+.lede{font-size:clamp(1rem,2vw,1.12rem);color:var(--ink-2);margin-top:14px;max-width:62ch;line-height:1.6}
+
+/* blocker */
+.blocker{margin-top:30px;border:1px solid var(--danger);border-radius:12px;overflow:hidden;background:var(--surface)}
+.blocker-h{display:flex;align-items:center;gap:10px;background:var(--danger-soft);padding:12px 18px;border-bottom:1px solid var(--danger)}
+.blocker-h span{font-family:var(--f-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--danger);border:1px solid var(--danger);border-radius:4px;padding:2px 7px}
+.blocker-h h2{font-size:1rem;color:var(--ink)}
+.blocker-b{padding:18px;display:flex;flex-direction:column;gap:13px;font-size:15px}
+
+.term{font-family:var(--f-mono);font-size:12.5px;line-height:1.8;background:var(--surface-2);border-radius:8px;padding:13px 15px;overflow-x:auto;white-space:pre;color:var(--ink-2);border-left:3px solid var(--danger)}
+.term b{color:var(--danger);font-weight:600}
+
+section{padding:42px 0;border-top:1px solid var(--line)}
+section:first-of-type{border-top:none}
+.sec-k{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap}
+.sec-n{font-family:var(--f-mono);font-size:12px;font-weight:600;color:var(--accent);letter-spacing:.02em}
+h2{font-size:clamp(1.3rem,2.8vw,1.65rem);letter-spacing:-.02em}
+h3{font-size:1.03rem;margin-top:26px;letter-spacing:-.008em}
+.dek{color:var(--ink-2);margin-top:12px;max-width:66ch}
+.prose{max-width:66ch;display:flex;flex-direction:column;gap:14px;margin-top:14px}
+.prose.tight{gap:10px}
+
+ul.bul{list-style:none;padding:0;display:flex;flex-direction:column;gap:8px;max-width:66ch}
+ul.bul li{position:relative;padding-left:18px;line-height:1.55}
+ul.bul li::before{content:"";position:absolute;left:1px;top:.6em;width:5px;height:5px;border-radius:1px;background:var(--accent);opacity:.8}
+
+/* code */
+.code{margin-top:16px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
+.code-h{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--surface-2);border-bottom:1px solid var(--line)}
+.code-h b{font-family:var(--f-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:600;border:1px solid var(--line-2);border-radius:4px;padding:2px 6px;background:var(--surface)}
+.code-h span{font-size:12.5px;color:var(--ink-3);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.code pre{margin:0;padding:14px;overflow-x:auto;font-family:var(--f-mono);font-size:12.5px;line-height:1.75;color:var(--ink-2);tab-size:2}
+
+/* tables */
+.tw{overflow-x:auto;margin-top:18px;border:1px solid var(--line);border-radius:10px;background:var(--surface);box-shadow:var(--shadow)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}
+th{text-align:left;font-family:var(--f-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);padding:11px 14px;border-bottom:1px solid var(--line-2);font-weight:600;white-space:nowrap;background:var(--surface-2)}
+td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.5;color:var(--ink-2)}
+tr:last-child td{border-bottom:none}
+td.f{font-family:var(--f-mono);font-size:12.5px;color:var(--ink);white-space:nowrap;font-weight:500}
+td.t{font-family:var(--f-mono);font-size:12px;color:var(--ink-3);white-space:nowrap}
+.pill{display:inline-block;font-family:var(--f-mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;padding:2px 6px;border-radius:3px;white-space:nowrap}
+.pill.pk{background:var(--accent-soft);color:var(--accent)}
+.pill.req{background:var(--danger-soft);color:var(--danger)}
+.pill.opt{background:var(--surface-2);color:var(--ink-3)}
+.pill.watch{background:var(--warn-soft);color:var(--warn)}
+
+/* callouts */
+.note{margin-top:18px;border-radius:10px;padding:15px 17px;font-size:14.5px;line-height:1.6;max-width:66ch;border:1px solid var(--line)}
+.note b{display:block;font-family:var(--f-mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;font-weight:600;margin-bottom:6px}
+.note.warn{background:var(--warn-soft);border-color:transparent}
+.note.warn b{color:var(--warn)}
+.note.bad{background:var(--danger-soft);border-color:transparent}
+.note.bad b{color:var(--danger)}
+.note.good{background:var(--ok-soft);border-color:transparent}
+.note.good b{color:var(--ok)}
+.note.info{background:var(--accent-soft);border-color:transparent}
+.note.info b{color:var(--accent)}
+
+/* stack diagram */
+.stack{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:20px}
+.box{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:16px;box-shadow:var(--shadow)}
+.box .t{font-family:var(--f-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.box h4{font-size:1rem;margin-top:7px}
+.box p{font-size:13.5px;color:var(--ink-2);margin-top:7px;line-height:1.55}
+.box ul{list-style:none;padding:0;margin-top:9px;display:flex;flex-direction:column;gap:4px}
+.box li{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-3)}
+
+/* checklist */
+ol.check{list-style:none;counter-reset:c;padding:0;margin-top:20px;display:flex;flex-direction:column;gap:11px;max-width:66ch}
+ol.check li{counter-increment:c;display:flex;gap:13px;align-items:flex-start;border:1px solid var(--line);border-radius:9px;background:var(--surface);padding:12px 14px}
+ol.check li::before{content:counter(c);font-family:var(--f-mono);font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-soft);border-radius:5px;width:22px;height:22px;flex:0 0 22px;display:flex;align-items:center;justify-content:center;margin-top:1px}
+ol.check div{flex:1;min-width:0;font-size:14.5px;line-height:1.55}
+ol.check b{font-weight:600;color:var(--ink)}
+
+footer{border-top:1px solid var(--line);margin-top:8px;padding:30px 0 60px;font-size:13.5px;color:var(--ink-3);line-height:1.6}
+footer p{max-width:70ch}
+footer strong{color:var(--ink-2);font-weight:600}
+
+@media (max-width:640px){
+  body{font-size:15px}
+  header.top{padding:30px 0 6px}
+  section{padding:34px 0}
+  .blocker-h{flex-wrap:wrap}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="shell">
+<div class="layout">
+
+  <nav class="toc" aria-label="Contents">
+    <p class="toc-h">Contents</p>
+    <ol>
+      <li><a href="#s1"><b>1</b>What you connect to</a></li>
+      <li><a href="#s2"><b>2</b>Credentials</a></li>
+      <li><a href="#s3"><b>3</b>Authentication</a></li>
+      <li><a href="#s4"><b>4</b>The identity gap</a></li>
+      <li><a href="#s5"><b>5</b>Schema</a></li>
+      <li><a href="#s6"><b>6</b>Queries</a></li>
+      <li><a href="#s7"><b>7</b>Realtime</a></li>
+      <li><a href="#s8"><b>8</b>Client-side rules</a></li>
+      <li><a href="#s9"><b>9</b>Landmines</a></li>
+      <li><a href="#s10"><b>10</b>Before you ship</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header class="top">
+      <p class="kicker"><span>Backend contract</span><i>&bull;</i><span>11 September 2026</span><i>&bull;</i><span>dearkochi.com</span></p>
+      <h1>Dear Kochi Android Brief</h1>
+      <p class="lede">Everything an Android client needs to talk to the same
+        database, the same tables and the same accounts as the live Dear Kochi
+        website. Written against the production schema as it actually is on
+        11 September 2026, not as the SQL files describe it.</p>
+
+      <div class="blocker">
+        <div class="blocker-h">
+          <span>Blocker</span>
+          <h2>Do not ship an APK against this database yet</h2>
+        </div>
+        <div class="blocker-b">
+          <p>Row-level security is effectively off. <code>firebase_migration.sql</code>
+            dropped every policy across twelve tables and replaced them with
+            <code>CREATE POLICY "Enable generic access" ON x FOR ALL USING (true)</code>.
+            The public key can read, write and delete every row.</p>
+          <p>Verified today, unauthenticated, against a private event:</p>
+          <div class="term">$ curl -H "apikey: $ANON_KEY" \
+    "$SUPABASE_URL/rest/v1/event_messages?event_id=eq.9f5d3be0-…"
+
+<b>HTTP 200 &middot; 312 bytes</b>   # private event, requires_approval = true
+                      # no session, no user, full chat returned</div>
+          <p>This is worse on Android than on the web. An anon key in a
+            JavaScript bundle takes a devtools tab; an anon key in an APK takes
+            <code>apktool d app.apk</code> and one <code>grep</code>. Publishing a
+            mobile app against this database puts every private conversation in
+            it one command away from anyone who installs it.</p>
+          <p><b>&sect;4 explains why this cannot be fixed with policies alone</b>
+            &mdash; and what has to happen first. Build against it in development
+            by all means. Do not put it on the Play Store.</p>
+        </div>
+      </div>
+    </header>
+
+    <section id="s1">
+      <div class="sec-k"><span class="sec-n">&sect; 1</span><h2>What you connect to</h2></div>
+      <p class="dek">Two managed services, split by job. The website uses both
+        and the Android app should use exactly the same two projects &mdash; same
+        data, same accounts, one event list shared between web and mobile.</p>
+
+      <div class="stack">
+        <div class="box">
+          <p class="t">Identity</p>
+          <h4>Firebase Auth</h4>
+          <p>Google sign-in and email/password. Issues the user ID that every
+            table keys off.</p>
+          <ul>
+            <li>project: dearkochi</li>
+            <li>sender id 1055618333570</li>
+            <li>SDK: firebase-auth-ktx</li>
+          </ul>
+        </div>
+        <div class="box">
+          <p class="t">Data</p>
+          <h4>Supabase (Postgres)</h4>
+          <p>Every table, plus realtime for chat and join notifications. Reached
+            over PostgREST.</p>
+          <ul>
+            <li>tables: local_events,</li>
+            <li>event_participants,</li>
+            <li>event_messages, profiles</li>
+          </ul>
+        </div>
+        <div class="box">
+          <p class="t">Not present</p>
+          <h4>No push, no server</h4>
+          <p>There is no FCM wiring, no service worker and no backend of your
+            own. Everything is client&rarr;Supabase directly.</p>
+          <ul>
+            <li>FCM: not configured</li>
+            <li>API routes: web-only</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="note info">
+        <b>Reference implementation</b>
+        The web client is the spec in executable form. Match its behaviour
+        rather than reinventing it: <code>src/app/local-events/page.tsx</code>,
+        <code>src/components/local-events/CreateEventModal.tsx</code>,
+        <code>EventDetailsModal.tsx</code>, and the shared helpers in
+        <code>src/lib/event-time.ts</code>.
+      </div>
+    </section>
+
+    <section id="s2">
+      <div class="sec-k"><span class="sec-n">&sect; 2</span><h2>Credentials</h2></div>
+      <p class="dek">Ask the project owner for these. They are not in this
+        document and must not be committed to a repository.</p>
+
+      <div class="tw">
+        <table>
+          <thead><tr><th>Value</th><th>Where it lives today</th><th>Safe in an APK?</th></tr></thead>
+          <tbody>
+            <tr><td class="f">SUPABASE_URL</td><td>Vercel env &middot; <code>NEXT_PUBLIC_SUPABASE_URL</code></td><td>Yes &mdash; it is a public endpoint</td></tr>
+            <tr><td class="f">SUPABASE_ANON_KEY</td><td>Vercel env &middot; <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code></td><td>Only once RLS is real. See the blocker.</td></tr>
+            <tr><td class="f">google-services.json</td><td>Firebase console &rarr; project settings</td><td>Yes &mdash; standard Android practice</td></tr>
+            <tr><td class="f">SERVICE_ROLE_KEY</td><td>Supabase dashboard</td><td><span class="pill req">Never</span> Server-side only. It bypasses RLS entirely.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note bad">
+        <b>Never in the app</b>
+        The service-role key ignores every policy. If it reaches an APK, the
+        whole database is readable and writable by anyone who unzips it. It
+        belongs only in the JWT-minting endpoint described in &sect;4.
+      </div>
+    </section>
+
+    <section id="s3">
+      <div class="sec-k"><span class="sec-n">&sect; 3</span><h2>Authentication</h2></div>
+      <p class="dek">Firebase Auth only. Do not create Supabase auth users
+        &mdash; the website never does, and a second identity system would split
+        every user in two.</p>
+
+      <div class="code">
+        <div class="code-h"><b>Kotlin</b><span>Sign in, then use the UID as the database key</span></div>
+<pre>val auth = Firebase.auth
+
+// Google or email/password — both already enabled on the project.
+auth.signInWithCredential(googleCredential).await()
+
+val uid = auth.currentUser?.uid
+// e.g. "nAxVkP5UWEZtz6S0M7hPOWtduVB3" — a 28-char Firebase UID.
+// This string is what goes into creator_id, user_id and profiles.id.</pre>
+      </div>
+
+      <h3>Profiles and the public identity</h3>
+      <p class="prose tight">Every account has a row in <code>profiles</code>,
+        keyed by the Firebase UID. The <code>nickname</code> is the only thing
+        shown to other people. It can be <code>null</code> on a fresh account,
+        and the website blocks creating or joining an event until one is set
+        &mdash; do the same.</p>
+
+      <div class="note warn">
+        <b>Never display email</b>
+        <code>profiles.email</code> is selected by some queries because it is on
+        the row, but the web client deliberately does not render it. Real names
+        and email addresses stay private; show the nickname and flair only.
+        See <code>src/components/UserDisplay.tsx</code>.
+      </div>
+    </section>
+
+    <section id="s4">
+      <div class="sec-k"><span class="sec-n">&sect; 4</span><h2>The identity gap</h2></div>
+      <p class="dek">This is the single most important thing in this document,
+        and the reason &sect;0 is a blocker rather than a note.</p>
+
+      <div class="prose">
+        <p>Firebase issues the identity. Supabase stores the data. The two have
+          never been introduced. Supabase has no idea who the Firebase user is,
+          so inside every Postgres policy <code>auth.uid()</code> evaluates to
+          <code>NULL</code>, permanently.</p>
+        <p>That is why the policies were switched off rather than fixed. With
+          <code>auth.uid()</code> always null, the original policies denied
+          everything and the app did not work at all. <code>USING (true)</code>
+          was the only way to make it function. It was a reasonable decision
+          under pressure, and it is load-bearing: <b>writing strict policies
+          today would break the app for everybody, on web and on Android.</b></p>
+        <p>So the fix is not more policies. It is a bridge, in this order:</p>
+      </div>
+
+      <ol class="check">
+        <li><div><b>Mint a Supabase-compatible JWT carrying the Firebase UID.</b>
+          Either Supabase&rsquo;s third-party auth integration for Firebase, or a
+          small server endpoint that verifies the Firebase ID token and signs a
+          JWT with <code>sub</code> set to the UID.</div></li>
+        <li><div><b>Send it on every request.</b> The Android client passes that
+          JWT as the <code>Authorization: Bearer</code> header instead of the
+          anon key, so Postgres knows who is asking.</div></li>
+        <li><div><b>Write policies against <code>auth.jwt() -&gt;&gt; 'sub'</code></b>
+          rather than <code>auth.uid()</code>. Now they can actually match the
+          <code>creator_id</code> and <code>user_id</code> columns.</div></li>
+        <li><div><b>Prove it.</b> A script that queries every table as an
+          anonymous client and expects 401 or an empty set. Run it in CI so this
+          cannot silently regress.</div></li>
+      </ol>
+
+      <div class="note good">
+        <b>Roughly a day of work</b>
+        And it unblocks everything: private chats become genuinely private, the
+        approval flow starts meaning something, and the anon key becomes safe to
+        ship in an APK. Do it before the Play Store listing, not after.
+      </div>
+    </section>
+
+    <section id="s5">
+      <div class="sec-k"><span class="sec-n">&sect; 5</span><h2>Schema</h2></div>
+      <p class="dek">Four tables carry the meet-up feature. Types below are the
+        live column types, which differ from the original SQL files &mdash; the
+        Firebase migration converted every user-ID column from
+        <code>UUID</code> to <code>TEXT</code>.</p>
+
+      <h3>local_events</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="f">id</td><td class="t">uuid</td><td><span class="pill pk">PK</span> defaults to <code>gen_random_uuid()</code></td></tr>
+            <tr><td class="f">created_at</td><td class="t">timestamptz</td><td>defaults to now()</td></tr>
+            <tr><td class="f">creator_id</td><td class="t">text</td><td><span class="pill req">Required</span> Firebase UID of the host</td></tr>
+            <tr><td class="f">title</td><td class="t">text</td><td><span class="pill req">Required</span> web caps input at 80 chars</td></tr>
+            <tr><td class="f">description</td><td class="t">text</td><td>Optional. Web caps at 500.</td></tr>
+            <tr><td class="f">event_type</td><td class="t">text</td><td><span class="pill req">Required</span> CHECK: <code>'live'</code> or <code>'scheduled'</code></td></tr>
+            <tr><td class="f">location</td><td class="t">text</td><td>Free-text place name shown on the card</td></tr>
+            <tr><td class="f">start_time</td><td class="t">timestamptz</td><td><span class="pill req">Required</span> now() for live events</td></tr>
+            <tr><td class="f">end_time</td><td class="t">timestamptz</td><td><span class="pill req">Required</span> drives list visibility &mdash; see &sect;8</td></tr>
+            <tr><td class="f">max_participants</td><td class="t">integer</td><td>Null means no limit. Web enforces a floor of 2.</td></tr>
+            <tr><td class="f">is_private</td><td class="t">boolean</td><td>Gates chat visibility. Default false.</td></tr>
+            <tr><td class="f">is_closed</td><td class="t">boolean</td><td>Stays visible; nobody new can join. Default false.</td></tr>
+            <tr><td class="f">requires_approval</td><td class="t">boolean</td><td>Joins land as <code>pending</code>. Default false.</td></tr>
+            <tr><td class="f">area</td><td class="t">text</td><td><span class="pill watch">Write it</span> NULL on 15 of 17 existing rows</td></tr>
+            <tr><td class="f">latitude</td><td class="t">double</td><td><span class="pill watch">Write it</span> NULL on every existing row</td></tr>
+            <tr><td class="f">longitude</td><td class="t">double</td><td><span class="pill watch">Write it</span> NULL on every existing row</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>event_participants</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="f">id</td><td class="t">uuid</td><td><span class="pill pk">PK</span></td></tr>
+            <tr><td class="f">event_id</td><td class="t">uuid</td><td><span class="pill req">Required</span> &rarr; local_events(id) ON DELETE CASCADE</td></tr>
+            <tr><td class="f">user_id</td><td class="t">text</td><td><span class="pill req">Required</span> &rarr; profiles(id) ON DELETE CASCADE</td></tr>
+            <tr><td class="f">status</td><td class="t">text</td><td>CHECK: <code>joined</code> &middot; <code>pending</code> &middot; <code>rejected</code> &middot; <code>removed</code></td></tr>
+            <tr><td class="f">request_message</td><td class="t">text</td><td>Shown to the host when approval is required</td></tr>
+            <tr><td class="f">created_at</td><td class="t">timestamptz</td><td>&mdash;</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note info">
+        <b>Unique together</b>
+        <code>UNIQUE (event_id, user_id)</code> &mdash; so joining is an
+        <code>upsert</code>, not an <code>insert</code>. One row per person per
+        event, whatever its status.
+      </div>
+
+      <h3>event_messages</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="f">id</td><td class="t">uuid</td><td><span class="pill pk">PK</span></td></tr>
+            <tr><td class="f">event_id</td><td class="t">uuid</td><td><span class="pill req">Required</span> &rarr; local_events(id) ON DELETE CASCADE</td></tr>
+            <tr><td class="f">user_id</td><td class="t">text</td><td><span class="pill req">Required</span> &rarr; profiles(id) ON DELETE CASCADE</td></tr>
+            <tr><td class="f">content</td><td class="t">text</td><td><span class="pill req">Required</span> web caps at 1000 chars</td></tr>
+            <tr><td class="f">created_at</td><td class="t">timestamptz</td><td>Sort ascending for the thread</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>profiles</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="f">id</td><td class="t">text</td><td><span class="pill pk">PK</span> the Firebase UID &mdash; not a generated key</td></tr>
+            <tr><td class="f">nickname</td><td class="t">text</td><td>The public identity. Nullable; require it before create or join.</td></tr>
+            <tr><td class="f">email</td><td class="t">text</td><td><span class="pill req">Never render</span> stored, not shown</td></tr>
+            <tr><td class="f">flair</td><td class="t">text</td><td>A single emoji beside the nickname. See <code>src/lib/flairs.ts</code>.</td></tr>
+            <tr><td class="f">avatar_url</td><td class="t">text</td><td>Column exists; null everywhere. Web renders an initial instead.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note good">
+        <b>The profiles join works</b>
+        Verified today: the foreign keys from <code>event_messages.user_id</code>
+        and <code>event_participants.user_id</code> to <code>profiles(id)</code>
+        survived the migration, so PostgREST resolves the embedded
+        <code>profiles(...)</code> select in &sect;6. If a query ever returns
+        &ldquo;could not find a relationship&rdquo;, that FK has been dropped.
+      </div>
+    </section>
+
+    <section id="s6">
+      <div class="sec-k"><span class="sec-n">&sect; 6</span><h2>Queries</h2></div>
+      <p class="dek">The REST line is the contract &mdash; it is what the wire
+        actually carries, whatever client library you use. Kotlin shown with
+        supabase-kt; adjust to whichever version you pin.</p>
+
+      <h3>List events</h3>
+      <div class="code">
+        <div class="code-h"><b>REST</b><span>Active events, soonest first</span></div>
+<pre>GET /rest/v1/local_events
+  ?select=*
+  &amp;end_time=gt.{now ISO-8601}
+  &amp;order=start_time.asc
+
+# Signed out, add: &amp;is_private=eq.false</pre>
+      </div>
+      <div class="code">
+        <div class="code-h"><b>Kotlin</b><span>supabase-kt</span></div>
+<pre>val events = supabase.from("local_events").select {
+    filter { gt("end_time", Clock.System.now().toString()) }
+    order("start_time", Order.ASCENDING)
+}.decodeList&lt;LocalEvent&gt;()</pre>
+      </div>
+
+      <h3>Participant counts</h3>
+      <p class="prose tight">Fetch every participant row for the page of events
+        in <b>one</b> query and count in memory. Do not issue a count per event
+        &mdash; a page of 30 events becomes 31 round trips, which is what the web
+        client used to do.</p>
+      <div class="code">
+        <div class="code-h"><b>REST</b><span>One call for the whole page</span></div>
+<pre>GET /rest/v1/event_participants
+  ?select=event_id,user_id
+  &amp;status=eq.joined
+  &amp;event_id=in.({comma-separated event ids})</pre>
+      </div>
+
+      <h3>Create an event</h3>
+      <div class="code">
+        <div class="code-h"><b>REST</b><span>Then immediately add the host as a participant</span></div>
+<pre>POST /rest/v1/local_events
+{
+  "creator_id":       "{firebase uid}",
+  "title":            "Sunday morning run",
+  "description":      null,
+  "event_type":       "live",              // or "scheduled"
+  "location":         "Marine Drive walkway",
+  "area":             "Ernakulam",         // derive it — see §8
+  "start_time":       "2026-09-12T01:00:00.000Z",
+  "end_time":         "2026-09-12T03:00:00.000Z",
+  "max_participants": null,
+  "is_private":       false,
+  "is_closed":        false,
+  "requires_approval": false,
+  "latitude":         9.9816,
+  "longitude":        76.2999
+}
+
+POST /rest/v1/event_participants
+{ "event_id": "{new id}", "user_id": "{uid}", "status": "joined" }</pre>
+      </div>
+
+      <h3>Join, or ask to join</h3>
+      <div class="code">
+        <div class="code-h"><b>REST</b><span>Upsert, because (event_id, user_id) is unique</span></div>
+<pre>POST /rest/v1/event_participants
+Prefer: resolution=merge-duplicates
+{
+  "event_id":        "{event id}",
+  "user_id":         "{uid}",
+  "status":          "joined",     // "pending" if requires_approval
+  "request_message": "Hi! I run most weekends."   // else null
+}</pre>
+      </div>
+
+      <h3>Chat thread</h3>
+      <div class="code">
+        <div class="code-h"><b>REST</b><span>Nicknames come from the embedded profile</span></div>
+<pre>GET /rest/v1/event_messages
+  ?select=id,content,created_at,user_id,profiles(nickname,flair,email)
+  &amp;event_id=eq.{event id}
+  &amp;order=created_at.asc
+
+POST /rest/v1/event_messages
+{ "event_id": "{id}", "user_id": "{uid}", "content": "…" }</pre>
+      </div>
+
+      <div class="note warn">
+        <b>maybeSingle, never single</b>
+        Checking whether the current user has joined returns zero rows for
+        anyone who has not &mdash; the normal case. PostgREST&rsquo;s
+        single-object mode raises <code>PGRST116</code> on zero rows. In Kotlin
+        use <code>decodeSingleOrNull()</code>. The web client used
+        <code>single()</code> here and logged an error every time anyone opened
+        an event.
+      </div>
+    </section>
+
+    <section id="s7">
+      <div class="sec-k"><span class="sec-n">&sect; 7</span><h2>Realtime</h2></div>
+      <p class="dek">All three tables are in the <code>supabase_realtime</code>
+        publication, so Postgres change streams work out of the box. The web
+        client subscribes to these channels; mirror them.</p>
+
+      <div class="tw">
+        <table>
+          <thead><tr><th>Channel</th><th>Events</th><th>Filter</th><th>Do on fire</th></tr></thead>
+          <tbody>
+            <tr><td class="f">event_messages:{id}</td><td class="t">INSERT</td><td class="t">event_id=eq.{id}</td><td>Refetch the thread</td></tr>
+            <tr><td class="f">event_participants:{id}</td><td class="t">*</td><td class="t">event_id=eq.{id}</td><td>Refetch participants, own status, and pending requests if host</td></tr>
+            <tr><td class="f">local_events_changes</td><td class="t">*</td><td class="t">none &mdash; table wide</td><td>Refetch the list</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note warn">
+        <b>Unsubscribe on teardown</b>
+        Tie each channel to the screen&rsquo;s lifecycle and remove it in
+        <code>onDestroy</code>. Supabase caps concurrent realtime connections,
+        and leaked channels from rotated or backgrounded activities will hit
+        that ceiling long before real traffic does.
+      </div>
+    </section>
+
+    <section id="s8">
+      <div class="sec-k"><span class="sec-n">&sect; 8</span><h2>Rules the client must enforce</h2></div>
+      <p class="dek">The database will not enforce any of these today, and the
+        web client got most of them wrong before 11 September 2026. Each one is a
+        bug that reached production, so treat this as a regression list.</p>
+
+      <div class="tw">
+        <table>
+          <thead><tr><th>Rule</th><th>What went wrong without it</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="f">Guard submit<br>synchronously</td>
+              <td>A disabled flag set after an <code>await</code> leaves the button live during that await. The same &ldquo;Morning Run&rdquo; was inserted <b>five times in 243ms</b>. Use a synchronous flag or mutex before any suspension point &mdash; not a state variable set later.</td>
+            </tr>
+            <tr>
+              <td class="f">start_time must be<br>in the future</td>
+              <td>Past events were accepted silently, so three existing events start months before they were created and have never appeared in any list.</td>
+            </tr>
+            <tr>
+              <td class="f">end_time = start<br>+ chosen duration</td>
+              <td>Scheduled events got a hard-coded <code>start + 3h</code>, so they vanished from the list three hours in regardless of how long they actually ran.</td>
+            </tr>
+            <tr>
+              <td class="f">Write area and<br>coordinates</td>
+              <td>Both were hard-coded null on insert, which is why the area filter has never matched a single row and no event can be shown on a map or sorted by distance.</td>
+            </tr>
+            <tr>
+              <td class="f">Phase from times,<br>not event_type</td>
+              <td>A filter keyed on <code>event_type = 'live'</code> lists finished events. Compute <code>upcoming</code> / <code>happening</code> / <code>ended</code> from <code>start_time</code> and <code>end_time</code>. Port <code>src/lib/event-time.ts</code>.</td>
+            </tr>
+            <tr>
+              <td class="f">Host joins their<br>own event</td>
+              <td>The host needs an <code>event_participants</code> row with <code>status = 'joined'</code> or the count is wrong and they cannot post in their own chat.</td>
+            </tr>
+            <tr>
+              <td class="f">Require a nickname<br>before create or join</td>
+              <td>Nullable by default, and it is the only name other people see. Ask up front, not after a rejected submit.</td>
+            </tr>
+            <tr>
+              <td class="f">Chat gate</td>
+              <td>Readable when <code>is_private = false</code>, or the viewer has <code>status = 'joined'</code>, or is the creator. Postable only by joined participants and the creator. Enforced in the UI only &mdash; see the blocker.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="s9">
+      <div class="sec-k"><span class="sec-n">&sect; 9</span><h2>Landmines</h2></div>
+      <p class="dek">Real properties of the live data that will surprise you.</p>
+
+      <ul class="bul">
+        <li><b>User IDs come in two shapes.</b> Most are 28-character Firebase
+          UIDs like <code>nAxVkP5UWEZtz6S0M7hPOWtduVB3</code>, but rows created
+          before the migration hold Postgres UUIDs like
+          <code>ff72524a-2d6a-4d95-b134-f9c9d8fb9803</code>. Those accounts
+          cannot sign in any more, so their events and messages can never match
+          a current user. Do not assume the column parses as a UUID, and do not
+          assume a 28-char shape either.</li>
+        <li><b>The same is true of <code>profiles.id</code>,</b> and some of those
+          rows have a null nickname. Render a fallback rather than crashing.</li>
+        <li><b>Visibility is driven entirely by <code>end_time</code>.</b> Anything
+          with a past <code>end_time</code> is invisible to every list query. As
+          of today that is all 17 events in the database.</li>
+        <li><b>There are no indexes</b> on <code>local_events.end_time</code> or
+          <code>event_participants.event_id</code>, which every list query hits.
+          <code>fix_duplicate_events.sql</code> in the repo adds them.</li>
+        <li><b>The database holds 17 test events and 23 test messages</b> &mdash;
+          titles like <code>test</code> and <code>kkk</code>, fifteen messages
+          that say &ldquo;hi&rdquo;. Delete them before launch rather than
+          shipping a listing full of them.</li>
+        <li><b><code>is_closed</code> exists and nothing filters on it.</b> Decide
+          deliberately: the web client keeps closed events visible so people who
+          already joined keep their chat.</li>
+        <li><b>No push notifications exist anywhere.</b> For a meet-up app this is
+          the retention loop &mdash; someone joined, you were approved, it starts
+          in an hour. FCM is unconfigured; budget for it as new work.</li>
+      </ul>
+    </section>
+
+    <section id="s10">
+      <div class="sec-k"><span class="sec-n">&sect; 10</span><h2>Before you ship</h2></div>
+      <p class="dek">Development against the current backend is fine. These are
+        the gates for a public Play Store release.</p>
+
+      <ol class="check">
+        <li><div><b>The JWT bridge from &sect;4 is live</b> and a script proves an
+          anonymous client is refused by every table.</div></li>
+        <li><div><b>Report and block are in the app.</b> Google&rsquo;s
+          user-generated content policy requires in-app reporting and blocking
+          before review, and a meet-up app puts strangers in rooms together.</div></li>
+        <li><div><b>18+ at signup.</b> Under-18s need verifiable parental consent
+          under the DPDP Act 2023, which is genuinely onerous. Confirm with
+          counsel; this is not legal advice.</div></li>
+        <li><div><b>A grievance contact is published.</b> India&rsquo;s IT Rules
+          2021 require a named contact, acknowledgement within 24 hours and
+          resolution within 15 days for a platform hosting user content.</div></li>
+        <li><div><b>Test data is gone</b> and at least one real recurring event
+          exists, so the first person who installs it sees something worth
+          joining.</div></li>
+      </ol>
+
+      <div class="note info">
+        <b>Recommended route</b>
+        If the goal is a Play Store listing quickly, wrapping the existing PWA in
+        a Trusted Web Activity gets there in about a week from the current
+        codebase, against a native Kotlin or Expo build of 8&ndash;16 weeks. The
+        strategy behind that recommendation is in the companion plan.
+      </div>
+    </section>
+
+    <footer>
+      <p><strong>Provenance.</strong> Schema types, row counts, null rates and
+        the RLS behaviour in this document were read from the production Supabase
+        database on 11 September 2026, not from the SQL files in the repository
+        &mdash; several of those describe a state the database is no longer in.
+        Legal points are flagged for a lawyer&rsquo;s confirmation and are not
+        advice.</p>
+    </footer>
+  </main>
+
+</div>
+</div>
