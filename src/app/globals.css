@@ -1,152 +1,531 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * Dark mode is driven by a `.dark` class on <html> (set by ThemeProvider),
+ * not by prefers-color-scheme alone. Tailwind v4 defaults `dark:` to the
+ * media query, so we redefine the variant to follow the class instead.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+   Design tokens
+   Raw values live on :root / .dark; Tailwind utilities read them through
+   @theme inline below, so `bg-surface`, `text-muted`, etc. switch with theme.
+   --------------------------------------------------------------------------- */
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  /* Surfaces — native-app style: solid, layered by elevation */
+  --dk-background: #f5f7fa;
+  --dk-surface: #ffffff;
+  --dk-surface-2: #eef1f6;
+  --dk-surface-3: #e2e8f0;
+  --dk-border: #dde3ea;
+  --dk-border-strong: #c7d0da;
+
+  /* Text */
+  --dk-foreground: #0b1220;
+  --dk-muted: #5b6575;
+  --dk-faint: #8b95a5;
+
+  /* Brand — teal reads as Kochi water and carries white text accessibly */
+  --dk-primary: #0e7490;
+  --dk-primary-hover: #0b5f77;
+  --dk-primary-foreground: #ffffff;
+  --dk-primary-soft: #e0f2f7;
+
+  /* Accent — the amber of the existing sun mark */
+  --dk-accent: #f59e0b;
+  --dk-accent-foreground: #3b2500;
+  --dk-accent-soft: #fef3c7;
+
+  /* Status */
+  --dk-danger: #dc2626;
+  --dk-danger-soft: #fee2e2;
+  --dk-success: #15803d;
+  --dk-success-soft: #dcfce7;
+
+  /* Category tints — used by dashboard tiles and section headers */
+  --dk-cat-places: #ea580c;
+  --dk-cat-places-soft: #ffedd5;
+  --dk-cat-transport: #2563eb;
+  --dk-cat-transport-soft: #dbeafe;
+  --dk-cat-emergency: #dc2626;
+  --dk-cat-emergency-soft: #fee2e2;
+  --dk-cat-social: #7c3aed;
+  --dk-cat-social-soft: #ede9fe;
+  --dk-cat-classified: #0d9488;
+  --dk-cat-classified-soft: #ccfbf1;
+  --dk-cat-stores: #4f46e5;
+  --dk-cat-stores-soft: #e0e7ff;
+  --dk-cat-events: #db2777;
+  --dk-cat-events-soft: #fce7f3;
+  --dk-cat-weather: #0284c7;
+  --dk-cat-weather-soft: #e0f2fe;
+
+  /* Elevation — tuned low; native UIs lean on separation, not drop shadows */
+  --dk-shadow-1: 0 1px 2px rgb(11 18 32 / 0.06), 0 1px 3px rgb(11 18 32 / 0.04);
+  --dk-shadow-2: 0 2px 8px rgb(11 18 32 / 0.07), 0 1px 2px rgb(11 18 32 / 0.04);
+  --dk-shadow-3: 0 8px 24px rgb(11 18 32 / 0.1), 0 2px 6px rgb(11 18 32 / 0.05);
+  --dk-shadow-nav: 0 -1px 0 rgb(11 18 32 / 0.06);
+
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+.dark {
+  --dk-background: #080c12;
+  --dk-surface: #111925;
+  --dk-surface-2: #1a2331;
+  --dk-surface-3: #232f40;
+  --dk-border: #27323f;
+  --dk-border-strong: #3a4759;
+
+  --dk-foreground: #e9eef5;
+  --dk-muted: #9aa7b8;
+  --dk-faint: #6b7889;
+
+  --dk-primary: #22d3ee;
+  --dk-primary-hover: #4fdef5;
+  --dk-primary-foreground: #04222b;
+  --dk-primary-soft: #0d3b47;
+
+  --dk-accent: #fbbf24;
+  --dk-accent-foreground: #2a1a00;
+  --dk-accent-soft: #3d2e08;
+
+  --dk-danger: #f87171;
+  --dk-danger-soft: #3f1414;
+  --dk-success: #4ade80;
+  --dk-success-soft: #0f2e1b;
+
+  --dk-cat-places: #fb923c;
+  --dk-cat-places-soft: #3b2110;
+  --dk-cat-transport: #60a5fa;
+  --dk-cat-transport-soft: #14253f;
+  --dk-cat-emergency: #f87171;
+  --dk-cat-emergency-soft: #3b1618;
+  --dk-cat-social: #a78bfa;
+  --dk-cat-social-soft: #271a3f;
+  --dk-cat-classified: #2dd4bf;
+  --dk-cat-classified-soft: #0c3230;
+  --dk-cat-stores: #818cf8;
+  --dk-cat-stores-soft: #1e2148;
+  --dk-cat-events: #f472b6;
+  --dk-cat-events-soft: #3b1329;
+  --dk-cat-weather: #38bdf8;
+  --dk-cat-weather-soft: #0c2c3f;
+
+  /* Shadows read as noise on dark surfaces — keep them tight and low-alpha */
+  --dk-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --dk-shadow-2: 0 2px 8px rgb(0 0 0 / 0.45);
+  --dk-shadow-3: 0 8px 24px rgb(0 0 0 / 0.55);
+  --dk-shadow-nav: 0 -1px 0 rgb(255 255 255 / 0.06);
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--dk-background);
+  --color-surface: var(--dk-surface);
+  --color-surface-2: var(--dk-surface-2);
+  --color-surface-3: var(--dk-surface-3);
+  --color-line: var(--dk-border);
+  --color-line-strong: var(--dk-border-strong);
+
+  --color-foreground: var(--dk-foreground);
+  --color-muted: var(--dk-muted);
+  --color-faint: var(--dk-faint);
+
+  --color-primary: var(--dk-primary);
+  --color-primary-hover: var(--dk-primary-hover);
+  --color-primary-foreground: var(--dk-primary-foreground);
+  --color-primary-soft: var(--dk-primary-soft);
+
+  --color-accent: var(--dk-accent);
+  --color-accent-foreground: var(--dk-accent-foreground);
+  --color-accent-soft: var(--dk-accent-soft);
+
+  --color-danger: var(--dk-danger);
+  --color-danger-soft: var(--dk-danger-soft);
+  --color-success: var(--dk-success);
+  --color-success-soft: var(--dk-success-soft);
+
+  --color-cat-places: var(--dk-cat-places);
+  --color-cat-places-soft: var(--dk-cat-places-soft);
+  --color-cat-transport: var(--dk-cat-transport);
+  --color-cat-transport-soft: var(--dk-cat-transport-soft);
+  --color-cat-emergency: var(--dk-cat-emergency);
+  --color-cat-emergency-soft: var(--dk-cat-emergency-soft);
+  --color-cat-social: var(--dk-cat-social);
+  --color-cat-social-soft: var(--dk-cat-social-soft);
+  --color-cat-classified: var(--dk-cat-classified);
+  --color-cat-classified-soft: var(--dk-cat-classified-soft);
+  --color-cat-stores: var(--dk-cat-stores);
+  --color-cat-stores-soft: var(--dk-cat-stores-soft);
+  --color-cat-events: var(--dk-cat-events);
+  --color-cat-events-soft: var(--dk-cat-events-soft);
+  --color-cat-weather: var(--dk-cat-weather);
+  --color-cat-weather-soft: var(--dk-cat-weather-soft);
+
+  --shadow-e1: var(--dk-shadow-1);
+  --shadow-e2: var(--dk-shadow-2);
+  --shadow-e3: var(--dk-shadow-3);
+
+  /* Mobile chrome heights, shared by shell padding and scroll offsets */
+  --spacing-topbar: 3.5rem;
+  --spacing-bottomnav: 4rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+
+@layer base {
+  * {
+    border-color: var(--dk-border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    /* Keep iOS from inflating text in landscape */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--dk-background);
+    color: var(--dk-foreground);
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* dvh tracks the shrinking viewport as mobile browser chrome hides */
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+  }
+
+  /* Don't let a stray wide child create a horizontal scrollbar app-wide.
+     Applied here rather than `overflow-x:hidden` on body, which would break
+     `position: sticky` descendants. */
+  #dk-root {
+    max-width: 100%;
+  }
+
+  /* Native-feeling tap behaviour: no blue flash, no accidental text select
+     on controls, but keep selection available for real content. */
+  a,
+  button,
+  [role="button"],
+  label,
+  summary {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  button,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  /* Inputs at <16px cause iOS Safari to zoom the viewport on focus */
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--dk-primary);
+    outline-offset: 2px;
+  }
+
+  /* Reserve room so fixed chrome never covers the end of a page */
+  ::selection {
+    background: var(--dk-primary);
+    color: var(--dk-primary-foreground);
   }
 }
 
-* {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ---------------------------------------------------------------------------
+   Utilities
+   --------------------------------------------------------------------------- */
+
+/* Was used in 4 carousels but never defined — horizontal strips showed a
+   raw scrollbar on every platform. */
+@utility scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
-html {
+/* Edge-to-edge horizontal strip that still lines up with page gutters and
+   snaps like a native carousel. */
+@utility snap-strip {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
-}
-
-body {
-  background: hsl(210 20% 96%);
-  color: hsl(220 20% 10%);
-  font-family: var(--font-inter), sans-serif;
-  overflow-x: hidden;
-  min-height: 100vh;
-  position: relative;
-}
-
-.page-bg {
-  position: fixed;
-  inset: 0;
-  background: url("https://images.pexels.com/photos/1440476/pexels-photo-1440476.jpeg?auto=compress&cs=tinysrgb&w=1200") center/cover no-repeat;
-  z-index: -1;
-}
-
-.page-bg::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to right,
-      hsl(210 20% 96% / 0.95),
-      hsl(210 20% 96% / 0.8),
-      hsl(210 20% 96% / 0.3));
-}
-
-/* Smooth animations */
-@keyframes float {
-
-  0%,
-  100% {
-    transform: translateY(0px);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+  &::-webkit-scrollbar {
+    display: none;
   }
-
-  50% {
-    transform: translateY(-10px);
+  & > * {
+    scroll-snap-align: start;
+    flex: none;
   }
 }
 
-@keyframes glow {
+/* Notch / home-indicator awareness */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@utility px-safe {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
 
-  0%,
-  100% {
-    box-shadow: 0 0 20px rgba(251, 146, 60, 0.3);
+/* Standard page gutter. 16px on phones (not the old 32px, which left only
+   296px of content on a 360px screen), opening up on larger viewports. */
+@utility page-x {
+  padding-inline: 1rem;
+  @media (width >= 40rem) {
+    padding-inline: 1.5rem;
   }
-
-  50% {
-    box-shadow: 0 0 30px rgba(251, 146, 60, 0.5);
+  @media (width >= 64rem) {
+    padding-inline: 2rem;
   }
 }
 
-@keyframes slideInUp {
+/* Minimum comfortable touch target (WCAG 2.5.8 / platform HIG is 44px) */
+@utility tap {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
+/* Press-down feedback — the main thing that makes taps feel native */
+@utility press {
+  transition:
+    transform 140ms cubic-bezier(0.2, 0, 0.2, 1),
+    background-color 140ms ease,
+    opacity 140ms ease;
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+@utility press-sm {
+  transition: transform 140ms cubic-bezier(0.2, 0, 0.2, 1);
+  &:active {
+    transform: scale(0.985);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Motion
+   Curves follow platform convention: decelerate on enter, accelerate on exit.
+   --------------------------------------------------------------------------- */
+
+@keyframes dk-fade-up {
   from {
     opacity: 0;
-    transform: translateY(30px);
+    transform: translate3d(0, 12px, 0);
   }
-
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 
-@keyframes fadeIn {
+@keyframes dk-sheet-up {
+  from {
+    transform: translate3d(0, 100%, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes dk-scrim {
   from {
     opacity: 0;
   }
-
   to {
     opacity: 1;
   }
 }
 
-/* Utility animations */
-.animate-float {
-  animation: float 4s ease-in-out infinite;
+@keyframes dk-shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
 }
 
-.animate-glow {
-  animation: glow 3s ease-in-out infinite;
+@keyframes dk-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
+.dk-fade-up {
+  animation: dk-fade-up 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
+ * `animate-fade-in`, `animate-fade-in-up` and `animate-scale-up` are
+ * referenced by 7 existing files (modals in places, admin, transport and
+ * ShareModal) but were never defined anywhere — neither in Tailwind core
+ * nor by any installed plugin — so those modals appeared with no
+ * transition at all. Defined here rather than rewritten at each call site.
+ */
+@keyframes dk-scale-up {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: dk-scrim 220ms ease-out both;
+}
+
+.animate-fade-in-up {
+  animation: dk-fade-up 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-scale-up,
+.animate-scale-in {
+  animation: dk-scale-up 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* `animate-slide-in` (CreateEventModal, EventDetailsModal) and
+   `animate-fadeIn` (DateEditor) are likewise referenced but undefined. */
 .animate-slide-in {
-  animation: slideInUp 0.6s ease-out;
+  animation: dk-fade-up 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Gradient text */
+.animate-fadeIn {
+  animation: dk-scrim 260ms ease-out both;
+}
+
+.dk-sheet-up {
+  animation: dk-sheet-up 300ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.dk-scrim {
+  animation: dk-scrim 220ms ease-out both;
+}
+
+/* Staggered list entrance. Set --dk-i on each child. */
+.dk-stagger > * {
+  animation: dk-fade-up 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--dk-i, 0) * 45ms);
+}
+
+/* Loading placeholder that reads as "content pending", not as a broken box */
+.dk-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--dk-surface-2) 25%,
+    var(--dk-surface-3) 37%,
+    var(--dk-surface-2) 63%
+  );
+  background-size: 200% 100%;
+  animation: dk-shimmer 1.4s ease-in-out infinite;
+  border-radius: 0.5rem;
+}
+
+/* Respect the OS "reduce motion" setting: keep opacity changes, drop
+   movement and anything that loops forever. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .dk-skeleton {
+    animation: none;
+    background: var(--dk-surface-2);
+  }
+
+  .press:active,
+  .press-sm:active {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Legacy helpers
+   Kept because existing pages reference them; retargeted onto the token set
+   so they no longer hardcode light-theme colours.
+   --------------------------------------------------------------------------- */
+
 .gradient-text {
-  background: linear-gradient(135deg, #f97316 0%, #f59e0b 50%, #d97706 100%);
+  background: linear-gradient(
+    135deg,
+    var(--dk-accent) 0%,
+    var(--dk-cat-places) 100%
+  );
   -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-/* Soft shadows */
 .shadow-soft {
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--dk-shadow-3);
 }
 
 .shadow-softer {
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--dk-shadow-1);
 }
 
-/* Blur glass effect */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: color-mix(in srgb, var(--dk-surface) 82%, transparent);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--dk-border);
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+/* ---------------------------------------------------------------------------
+   Scrollbars — desktop only; mobile overlays its own.
+   --------------------------------------------------------------------------- */
 
-::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 10px;
-}
+@media (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: 10px;
-}
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
+  ::-webkit-scrollbar-thumb {
+    background: var(--dk-border-strong);
+    border-radius: 10px;
+    border: 2px solid var(--dk-background);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--dk-faint);
+  }
 }

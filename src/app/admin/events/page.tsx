@@ -1,112 +1,193 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Trash2, Calendar, MapPin } from 'lucide-react';
+import { Trash2, Calendar, MapPin, Users, Lock } from 'lucide-react';
 
-interface Event {
-    id: number;
+import { EmptyState, ErrorState } from '@/components/ui/EmptyState';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { useConfirm } from '@/components/ui/ConfirmSheet';
+import { formatEventDate, formatTime } from '@/lib/format';
+
+type AdminEvent = {
+    id: string;
     title: string;
-    description: string;
-    date: string;
-    location: string;
-    image_url?: string;
-    created_at: string;
-}
+    description: string | null;
+    location: string | null;
+    area: string | null;
+    event_type: 'scheduled' | 'live';
+    start_time: string;
+    end_time: string;
+    max_participants: number | null;
+    is_private: boolean;
+    is_closed: boolean;
+};
 
 export default function AdminEvents() {
-    const [events, setEvents] = useState<Event[]>([]);
+    const [events, setEvents] = useState<AdminEvent[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const { confirm, element } = useConfirm();
+
+    const fetchEvents = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+
+        // `local_events` has start_time/end_time — there is no `date`
+        // column, and no `events` table. Ordering by `date` failed with
+        // Postgres 42703 and the fallback query 404'd, so this page always
+        // rendered an empty list regardless of the data.
+        const { data, error: dbError } = await supabase
+            .from('local_events')
+            .select('*')
+            .order('start_time', { ascending: false });
+
+        if (dbError) {
+            console.error('Error fetching events:', dbError);
+            setError('Could not load events.');
+        } else {
+            setEvents((data ?? []) as AdminEvent[]);
+        }
+        setLoading(false);
+    }, []);
 
     useEffect(() => {
         fetchEvents();
-    }, []);
+    }, [fetchEvents]);
 
-    const fetchEvents = async () => {
-        setLoading(true);
-        // Assuming table 'local_events' or 'events'. Checking setup files, use 'local_events' likely?
-        // Let's use 'events' if locally standard, but older context mentioned 'local_events'.
-        // I will try 'local_events' first based on directory name structure.
-        const { data, error } = await supabase
-            .from('local_events')
-            .select('*')
-            .order('date', { ascending: true });
-
-        if (!error && data) {
-            setEvents(data);
-        } else if (error) {
-            // Fallback to 'events' if local_events fails (just safely)
-            const { data: data2, error: error2 } = await supabase.from('events').select('*');
-            if (!error2 && data2) setEvents(data2);
-        }
-        setLoading(false);
-    };
-
-    const handleDelete = async (id: number) => {
-        if (!confirm('Are you sure you want to delete this event?')) return;
-
-        // Try deleting from likely tables
-        let { error } = await supabase.from('local_events').delete().eq('id', id);
-        if (error) {
-            // try events
-            await supabase.from('events').delete().eq('id', id);
-        }
-        fetchEvents();
-    };
+    const remove = (event: AdminEvent) =>
+        confirm({
+            title: 'Delete this event?',
+            body: `“${event.title}” will be removed for everyone.`,
+            onConfirm: async () => {
+                const { error: dbError } = await supabase
+                    .from('local_events')
+                    .delete()
+                    .eq('id', event.id);
+                if (dbError) {
+                    console.error('Error deleting event:', dbError);
+                    setError('Could not delete that event.');
+                    return;
+                }
+                await fetchEvents();
+            },
+        });
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold text-gray-900">Manage Events</h1>
+        <div className="space-y-5">
+            <div>
+                <h1 className="text-[24px] font-extrabold tracking-tight text-foreground">
+                    Events
+                </h1>
+                <p className="mt-0.5 text-sm text-muted">
+                    {loading ? 'Loading…' : `${events.length} total`}
+                </p>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                            <th className="px-6 py-4 font-semibold text-gray-700">Event</th>
-                            <th className="px-6 py-4 font-semibold text-gray-700">Date & Time</th>
-                            <th className="px-6 py-4 font-semibold text-gray-700">Location</th>
-                            <th className="px-6 py-4 font-semibold text-gray-700 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {events.map((event) => (
-                            <tr key={event.id} className="hover:bg-gray-50">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden">
-                                            {event.image_url ? (
-                                                <img src={event.image_url} className="w-full h-full object-cover" />
-                                            ) : (
-                                                <Calendar className="m-2 text-gray-400" />
+            {loading ? (
+                <div className="space-y-2.5">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <Skeleton key={i} className="h-20 rounded-2xl" />
+                    ))}
+                </div>
+            ) : error ? (
+                <ErrorState description={error} onRetry={fetchEvents} />
+            ) : events.length === 0 ? (
+                <EmptyState
+                    icon={Calendar}
+                    title="No events"
+                    description="Nothing has been created yet."
+                />
+            ) : (
+                /* Cards instead of a table: the admin panel is used on
+                   phones too, where a 4-column table forces the page to
+                   scroll sideways. */
+                <ul className="space-y-2.5">
+                    {events.map((event) => {
+                        const past = new Date(event.end_time) < new Date();
+                        return (
+                            <li
+                                key={event.id}
+                                className="rounded-2xl border border-line bg-surface p-4 shadow-e1"
+                            >
+                                <div className="flex items-start gap-3">
+                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cat-events-soft text-cat-events">
+                                        <Calendar size={18} />
+                                    </span>
+
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <h2 className="truncate text-[15px] font-bold text-foreground">
+                                                {event.title}
+                                            </h2>
+                                            <span
+                                                className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${event.event_type === 'live'
+                                                        ? 'bg-cat-emergency-soft text-cat-emergency'
+                                                        : 'bg-cat-social-soft text-cat-social'
+                                                    }`}
+                                            >
+                                                {event.event_type}
+                                            </span>
+                                            {past && (
+                                                <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-bold uppercase text-muted">
+                                                    Ended
+                                                </span>
+                                            )}
+                                            {event.is_private && (
+                                                <Lock
+                                                    size={12}
+                                                    className="text-faint"
+                                                    aria-label="Private"
+                                                />
                                             )}
                                         </div>
-                                        <span className="font-medium text-gray-900">{event.title}</span>
+
+                                        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+                                            <span className="flex items-center gap-1">
+                                                <Calendar
+                                                    size={12}
+                                                    className="text-faint"
+                                                />
+                                                {formatEventDate(event.start_time)}{' '}
+                                                {formatTime(event.start_time)}
+                                            </span>
+                                            {event.location && (
+                                                <span className="flex items-center gap-1">
+                                                    <MapPin
+                                                        size={12}
+                                                        className="text-faint"
+                                                    />
+                                                    {event.location}
+                                                </span>
+                                            )}
+                                            {event.max_participants != null && (
+                                                <span className="flex items-center gap-1">
+                                                    <Users
+                                                        size={12}
+                                                        className="text-faint"
+                                                    />
+                                                    max {event.max_participants}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
-                                </td>
-                                <td className="px-6 py-4 text-gray-600">
-                                    {new Date(event.date).toLocaleDateString()}
-                                </td>
-                                <td className="px-6 py-4 text-gray-600 flex items-center gap-1">
-                                    <MapPin size={14} /> {event.location}
-                                </td>
-                                <td className="px-6 py-4 text-right">
+
                                     <button
-                                        onClick={() => handleDelete(event.id)}
-                                        className="text-gray-400 hover:text-red-600 transition-colors p-2"
+                                        type="button"
+                                        onClick={() => remove(event)}
+                                        aria-label={`Delete ${event.title}`}
+                                        className="press tap flex shrink-0 items-center justify-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger"
                                     >
-                                        <Trash2 size={18} />
+                                        <Trash2 size={17} />
                                     </button>
-                                </td>
-                            </tr>
-                        ))}
-                        {events.length === 0 && !loading && (
-                            <tr><td colSpan={4} className="p-8 text-center text-gray-500">No events found.</td></tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                                </div>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
+
+            {element}
         </div>
     );
 }

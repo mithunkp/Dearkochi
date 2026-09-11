@@ -1,19 +1,26 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { Star, MapPin, Plus, ArrowLeft, Store as StoreIcon, ArrowRight, Share2, Search, Filter } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import {
+    Star,
+    MapPin,
+    Plus,
+    Store as StoreIcon,
+    Share2,
+    Search,
+    X,
+} from 'lucide-react';
 
-import { Header } from '@/components/Header';
-import { GlassCard } from '@/components/ui/GlassCard';
 import { ShareModal } from '@/components/ui/ShareModal';
+import { SafeImage } from '@/components/ui/SafeImage';
+import { Chip, ChipRow } from '@/components/ui/Chip';
+import { EmptyState, ErrorState } from '@/components/ui/EmptyState';
+import { Skeleton, LoadingAnnouncer } from '@/components/ui/Skeleton';
+import { ButtonLink } from '@/components/ui/Button';
 
-type Category = {
-    id: number;
-    name: string;
-};
+type Category = { id: number; name: string };
 
 type Store = {
     id: number;
@@ -22,255 +29,295 @@ type Store = {
     location: string | null;
     category_id: number | null;
     image_url: string | null;
-    categories: {
-        name: string;
-    } | null;
+    categories: { name: string } | null;
 };
 
 export default function StoresPage() {
     const [stores, setStores] = useState<Store[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [ratings, setRatings] = useState<Record<number, number>>({});
-    const [selectedCategory, setSelectedCategory] = useState<string>('all');
-    const [searchQuery, setSearchQuery] = useState('');
+    const [selected, setSelected] = useState<string>('all');
+    const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(true);
-    const [shareConfig, setShareConfig] = useState<{ isOpen: boolean; item: Store | null }>({
-        isOpen: false,
-        item: null
-    });
+    const [error, setError] = useState<string | null>(null);
+    const [shareItem, setShareItem] = useState<Store | null>(null);
 
-    useEffect(() => {
-        fetchData();
-    }, []);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        setError(null);
         try {
-            const [storesRes, categoriesRes, ratingsRes] = await Promise.all([
+            const [storesRes, catsRes, ratingsRes] = await Promise.all([
                 supabase
                     .from('stores')
-                    .select(`
-            *,
-            categories (
-              name
-            )
-          `)
+                    .select(`*, categories ( name )`)
                     .order('created_at', { ascending: false }),
-                supabase
-                    .from('categories')
-                    .select('*')
-                    .order('name'),
-                supabase
-                    .from('store_ratings')
-                    .select('store_id, rating')
+                supabase.from('categories').select('*').order('name'),
+                supabase.from('store_ratings').select('store_id, rating'),
             ]);
 
-            if (storesRes.error) {
-                console.error('Supabase Stores Error:', JSON.stringify(storesRes.error, null, 2));
-                throw storesRes.error;
-            }
-            if (categoriesRes.error) {
-                console.error('Supabase Categories Error:', JSON.stringify(categoriesRes.error, null, 2));
-                throw categoriesRes.error;
-            }
+            if (storesRes.error) throw storesRes.error;
+            if (catsRes.error) throw catsRes.error;
 
-            // Calculate average ratings
-            const ratingMap: Record<number, { sum: number; count: number }> = {};
-            if (ratingsRes.data) {
-                ratingsRes.data.forEach((r: { store_id: number; rating: number }) => {
-                    if (!ratingMap[r.store_id]) ratingMap[r.store_id] = { sum: 0, count: 0 };
-                    ratingMap[r.store_id].sum += r.rating;
-                    ratingMap[r.store_id].count += 1;
-                });
+            // Average each store's ratings in a single pass.
+            const totals: Record<number, { sum: number; count: number }> = {};
+            for (const r of ratingsRes.data ?? []) {
+                const row = r as { store_id: number; rating: number };
+                totals[row.store_id] ??= { sum: 0, count: 0 };
+                totals[row.store_id].sum += row.rating;
+                totals[row.store_id].count += 1;
             }
-
             const averages: Record<number, number> = {};
-            Object.keys(ratingMap).forEach((key) => {
-                const id = parseInt(key);
-                averages[id] = ratingMap[id].sum / ratingMap[id].count;
-            });
-
-            setStores(storesRes.data || []);
-            setCategories(categoriesRes.data || []);
-            setRatings(averages);
-        } catch (error) {
-            console.error('Error fetching data:', error);
-            console.error('Error details:', JSON.stringify(error, null, 2));
-            if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === '42P01') {
-                alert('Database tables not found. Please run the supabase_setup.sql script in your Supabase SQL Editor.');
+            for (const [id, { sum, count }] of Object.entries(totals)) {
+                averages[Number(id)] = sum / count;
             }
+
+            setStores(storesRes.data ?? []);
+            setCategories(catsRes.data ?? []);
+            setRatings(averages);
+        } catch (err) {
+            // Was an alert() telling visitors to run supabase_setup.sql.
+            console.error('Failed to load stores:', err);
+            setError('We could not load stores just now.');
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
-    const filteredStores = stores.filter(store => {
-        const matchesCategory = selectedCategory === 'all' || store.category_id?.toString() === selectedCategory;
-        const matchesSearch = store.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            store.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            store.location?.toLowerCase().includes(searchQuery.toLowerCase());
-        return matchesCategory && matchesSearch;
-    });
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    const filtered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        return stores.filter((s) => {
+            const inCategory =
+                selected === 'all' || s.category_id?.toString() === selected;
+            if (!inCategory) return false;
+            if (!q) return true;
+            return (
+                s.name.toLowerCase().includes(q) ||
+                (s.description?.toLowerCase().includes(q) ?? false) ||
+                (s.location?.toLowerCase().includes(q) ?? false)
+            );
+        });
+    }, [stores, selected, query]);
 
     return (
-        <div className="min-h-screen flex flex-col bg-slate-50/50">
-            <Header />
+        <div className="mx-auto w-full max-w-6xl pb-10">
+            <div className="page-x pt-5">
+                <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
+                    Stores
+                </h1>
+                <p className="mt-1 text-sm text-muted">
+                    Local businesses across Kochi
+                </p>
+            </div>
 
-            <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Header Section */}
-                <div className="flex flex-col gap-6 mb-8">
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                        <Link href="/" className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors text-sm font-medium">
-                            <ArrowLeft size={16} /> Back to Home
-                        </Link>
-                        <div className="flex items-center gap-3 w-full md:w-auto">
-                            <div className="relative flex-1 md:w-96">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                                    <Search size={18} />
-                                </div>
-                                <input
-                                    type="text"
-                                    placeholder="Search stores..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm text-sm"
-                                />
-                            </div>
-                            <Link
-                                href="/stores/new"
-                                className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 shadow-md shadow-slate-200 text-sm font-medium transition-all hover:scale-105 active:scale-95 flex items-center gap-2 whitespace-nowrap"
-                            >
-                                <Plus size={16} />
-                                <span>Add Store</span>
-                            </Link>
-                        </div>
-                    </div>
-
-                    {/* Filter Bar */}
-                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+            {/* Search sits above the fold on mobile, where it matters most */}
+            <div className="page-x mt-4">
+                <div className="relative">
+                    <Search
+                        size={17}
+                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint"
+                    />
+                    <input
+                        type="search"
+                        inputMode="search"
+                        placeholder="Search stores, areas…"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        aria-label="Search stores"
+                        className="h-12 w-full rounded-xl border border-line bg-surface pl-11 pr-11 text-[15px] text-foreground placeholder:text-faint focus:border-primary focus:outline-none"
+                    />
+                    {query && (
                         <button
-                            onClick={() => setSelectedCategory('all')}
-                            className={`px-3 py-1.5 rounded-lg whitespace-nowrap text-xs font-semibold transition-all flex items-center gap-1.5 ${selectedCategory === 'all'
-                                ? 'bg-slate-900 text-white shadow-md'
-                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                }`}
+                            type="button"
+                            onClick={() => setQuery('')}
+                            aria-label="Clear search"
+                            className="press absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-muted hover:bg-surface-2"
                         >
-                            <Filter size={12} /> All
+                            <X size={17} />
                         </button>
+                    )}
+                </div>
+            </div>
+
+            {categories.length > 0 && (
+                <div className="mt-3">
+                    <ChipRow aria-label="Filter by category">
+                        <Chip
+                            active={selected === 'all'}
+                            onClick={() => setSelected('all')}
+                        >
+                            All
+                        </Chip>
                         {categories.map((cat) => (
-                            <button
+                            <Chip
                                 key={cat.id}
-                                onClick={() => setSelectedCategory(cat.id.toString())}
-                                className={`px-3 py-1.5 rounded-lg whitespace-nowrap text-xs font-medium transition-all ${selectedCategory === cat.id.toString()
-                                    ? 'bg-blue-600 text-white shadow-md'
-                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                    }`}
+                                active={selected === cat.id.toString()}
+                                onClick={() => setSelected(cat.id.toString())}
                             >
                                 {cat.name}
-                            </button>
+                            </Chip>
                         ))}
-                    </div>
+                    </ChipRow>
                 </div>
+            )}
 
-                {/* Grid */}
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                    {filteredStores.map((store) => (
-                        <Link href={`/stores/${store.id}`} key={store.id} className="group block h-full">
-                            <GlassCard className="h-full flex flex-col relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 p-0 rounded-xl">
-                                {/* Image Section */}
-                                <div className="relative w-full aspect-video bg-slate-100 overflow-hidden">
-                                    <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-t from-black/50 via-transparent to-transparent z-10 opacity-60" />
-
-                                    <button
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            setShareConfig({ isOpen: true, item: store });
-                                        }}
-                                        className="absolute top-2 right-2 z-20 w-7 h-7 bg-white/20 backdrop-blur-md text-white hover:bg-white hover:text-blue-600 rounded-full flex items-center justify-center transition-colors border border-white/30"
-                                    >
-                                        <Share2 size={14} />
-                                    </button>
-
-                                    {store.image_url ? (
-                                        <Image
-                                            src={store.image_url}
-                                            alt={store.name}
-                                            fill
-                                            className="object-cover transition-transform duration-700 group-hover:scale-105"
-                                        />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-slate-300 bg-slate-50">
-                                            <StoreIcon size={32} />
-                                        </div>
-                                    )}
-
-                                    <div className="absolute bottom-2 left-2 z-20 flex items-center gap-2">
-                                        <div className="flex items-center gap-1 px-1.5 py-0.5 bg-yellow-400 text-yellow-950 rounded text-[10px] font-bold shadow-sm">
-                                            <Star size={10} className="fill-yellow-950" />
-                                            {ratings[store.id] ? ratings[store.id].toFixed(1) : 'New'}
-                                        </div>
+            <div className="page-x mt-5">
+                {loading ? (
+                    <>
+                        <LoadingAnnouncer label="Loading stores" />
+                        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                            {Array.from({ length: 6 }).map((_, i) => (
+                                <div
+                                    key={i}
+                                    className="overflow-hidden rounded-2xl border border-line bg-surface"
+                                >
+                                    <Skeleton className="aspect-video rounded-none" />
+                                    <div className="space-y-2 p-3">
+                                        <Skeleton className="h-4 w-4/5" />
+                                        <Skeleton className="h-3 w-1/2" />
                                     </div>
                                 </div>
-
-                                {/* Content Section */}
-                                <div className="p-4 flex flex-col flex-grow">
-                                    <div className="flex justify-between items-start mb-1">
-                                        <h3 className="font-bold text-base text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">
-                                            {store.name}
-                                        </h3>
-                                        {store.categories && (
-                                            <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">
-                                                {store.categories.name}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium mb-2">
-                                        <MapPin size={12} className="text-slate-400" />
-                                        <span className="truncate">{store.location || 'No location'}</span>
-                                    </div>
-
-                                    <p className="text-slate-600 text-xs mb-3 line-clamp-2 leading-relaxed flex-grow">
-                                        {store.description}
-                                    </p>
-
-                                    <div className="pt-3 border-t border-slate-100 mt-auto flex items-center justify-between">
-                                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
-                                            View Details
-                                        </span>
-                                        <ArrowRight size={14} className="text-blue-600 group-hover:translate-x-1 transition-transform" />
-                                    </div>
-                                </div>
-                            </GlassCard>
-                        </Link>
-                    ))}
-                </div>
-
-                {filteredStores.length === 0 && (
-                    <div className="text-center py-20 bg-white/50 backdrop-blur-sm rounded-3xl border border-white/60">
-                        <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-500 animate-pulse">
-                            <Search size={32} />
+                            ))}
                         </div>
-                        <h3 className="text-2xl font-bold text-slate-900 mb-2">No stores found</h3>
-                        <p className="text-slate-500 max-w-md mx-auto">
-                            We couldn&apos;t find any stores matching your search. Try adjusting your filters or search terms.
-                        </p>
-                    </div>
+                    </>
+                ) : error ? (
+                    <ErrorState description={error} onRetry={fetchData} />
+                ) : filtered.length === 0 ? (
+                    <EmptyState
+                        icon={StoreIcon}
+                        title={query ? 'No matches' : 'No stores yet'}
+                        description={
+                            query
+                                ? `Nothing matched “${query}”. Try a different term.`
+                                : 'Be the first to add a business to the directory.'
+                        }
+                        action={
+                            query ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setQuery('');
+                                        setSelected('all');
+                                    }}
+                                    className="press h-11 rounded-xl bg-surface-2 px-4 text-sm font-semibold text-foreground"
+                                >
+                                    Clear filters
+                                </button>
+                            ) : (
+                                <ButtonLink href="/stores/new">
+                                    <Plus size={16} />
+                                    Add a store
+                                </ButtonLink>
+                            )
+                        }
+                    />
+                ) : (
+                    <ul className="dk-stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
+                        {filtered.map((store, i) => (
+                            <StoreCard
+                                key={store.id}
+                                store={store}
+                                rating={ratings[store.id]}
+                                index={i}
+                                onShare={() => setShareItem(store)}
+                            />
+                        ))}
+                    </ul>
                 )}
-            </main>
+            </div>
 
-            {shareConfig.item && (
+            <Link
+                href="/stores/new"
+                aria-label="Add a store"
+                className="press fixed right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-e3 sm:hidden"
+                style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
+            >
+                <Plus size={24} />
+            </Link>
+
+            {shareItem && (
                 <ShareModal
-                    isOpen={shareConfig.isOpen}
-                    onClose={() => setShareConfig({ ...shareConfig, isOpen: false })}
-                    title={shareConfig.item.name}
-                    url={`${typeof window !== 'undefined' ? window.location.origin : ''}/stores/${shareConfig.item.id}`}
+                    isOpen={!!shareItem}
+                    onClose={() => setShareItem(null)}
+                    title={shareItem.name}
+                    url={`${typeof window !== 'undefined' ? window.location.origin : ''}/stores/${shareItem.id}`}
                     type="store"
-                    data={shareConfig.item}
+                    data={shareItem}
                 />
             )}
         </div>
+    );
+}
+
+function StoreCard({
+    store,
+    rating,
+    index,
+    onShare,
+}: {
+    store: Store;
+    rating?: number;
+    index: number;
+    onShare: () => void;
+}) {
+    return (
+        <li
+            style={{ '--dk-i': index } as React.CSSProperties}
+            className="relative"
+        >
+            <Link
+                href={`/stores/${store.id}`}
+                className="press flex h-full flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-e1 hover:border-line-strong hover:shadow-e2"
+            >
+                <div className="relative aspect-video bg-surface-2">
+                    <SafeImage
+                        src={store.image_url}
+                        alt={store.name}
+                        sizes="(max-width: 640px) 50vw, 25vw"
+                    />
+                    <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-md bg-surface/95 px-1.5 py-0.5 text-[11px] font-bold text-foreground shadow-e1 backdrop-blur-sm">
+                        <Star
+                            size={11}
+                            className="fill-accent text-accent"
+                        />
+                        {rating ? rating.toFixed(1) : 'New'}
+                    </span>
+                </div>
+
+                <div className="flex flex-1 flex-col p-3">
+                    <h3 className="line-clamp-1 text-sm font-bold text-foreground">
+                        {store.name}
+                    </h3>
+                    {store.categories && (
+                        <span className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-faint">
+                            {store.categories.name}
+                        </span>
+                    )}
+                    <span className="mt-1.5 flex items-center gap-1 text-xs text-muted">
+                        <MapPin size={12} className="shrink-0 text-faint" />
+                        <span className="truncate">
+                            {store.location || 'Location not given'}
+                        </span>
+                    </span>
+                    {store.description && (
+                        <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-muted">
+                            {store.description}
+                        </p>
+                    )}
+                </div>
+            </Link>
+
+            <button
+                type="button"
+                onClick={onShare}
+                aria-label={`Share ${store.name}`}
+                className="press absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-surface/95 text-muted shadow-e1 backdrop-blur-sm hover:text-foreground"
+            >
+                <Share2 size={15} />
+            </button>
+        </li>
     );
 }

@@ -68,7 +68,6 @@ const VisualSheet: React.FC<VisualSheetProps> = ({
             const newY = clientY - dragOffset.y;
 
             // Constrain to sheet bounds
-            const sheetRect = sheetRef.current.getBoundingClientRect();
             const stickerWidth = 120;
 
             const maxX = sheetRef.current.clientWidth - stickerWidth;
@@ -166,7 +165,7 @@ const VisualSheet: React.FC<VisualSheetProps> = ({
             </div>
 
             <div className="text-center mt-12 text-gray-400 text-sm italic">
-                Can't wait to see you there ❤️
+                Can&apos;t wait to see you there ❤️
             </div>
 
             {/* Sticker Layer */}

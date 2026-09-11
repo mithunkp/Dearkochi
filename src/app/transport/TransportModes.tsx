@@ -1,6 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import {
+    TrainFront,
+    Ship,
+    Bus,
+    Car,
+    ChevronDown,
+    ExternalLink,
+    Info,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Notice } from '@/components/ui/Notice';
 
 type MetroStation = {
     station: string;
@@ -29,289 +40,447 @@ type TransportModesProps = {
     waterMetroError: string | null;
 };
 
+type Fact = { label: string; value: string };
+
+/** Smallest / largest numeric value in a set of "7", "10" style strings. */
+function numericRange(values: string[]): string | null {
+    const nums = values
+        .map((v) => Number.parseInt(v, 10))
+        .filter((n) => Number.isFinite(n));
+    if (nums.length === 0) return null;
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
+    return min === max ? `${min} min` : `${min}–${max} min`;
+}
+
 export default function TransportModes({
     metroStations,
     waterMetroSchedules,
     metroError,
-    waterMetroError
+    waterMetroError,
 }: TransportModesProps) {
-    const [selectedMode, setSelectedMode] = useState<string | null>(null);
+    const [open, setOpen] = useState<string | null>('metro');
 
-    const transportModes = [
-        {
-            id: 'metro',
-            name: 'Kochi Metro',
-            desc: 'Fast connectivity',
-            status: 'Operational',
-            bgColor: 'bg-blue-50',
-            textColor: 'text-blue-600',
-            borderColor: 'border-blue-100',
-            isRealTime: false,
-            data: [
-                { label: 'Next Departure', value: '06:12 PM' },
-                { label: 'Frequency', value: '7 mins (Peak)' },
-                { label: 'Train Status', value: 'On Time' },
-                { label: 'Last Updated', value: 'Just now' }
-            ]
-        },
-        {
-            id: 'water',
-            name: 'Water Metro',
-            desc: 'Scenic island routes',
-            status: 'On Time',
-            bgColor: 'bg-teal-50',
-            textColor: 'text-teal-600',
-            borderColor: 'border-teal-100',
-            isRealTime: false,
-            data: [
-                { label: 'Next Boat', value: '06:30 PM' },
-                { label: 'Jetty Status', value: 'On Time' },
-                { label: 'Seat Availability', value: 'High' },
-                { label: 'Last Updated', value: '5 mins ago' }
-            ]
-        },
-        {
-            id: 'bus',
-            name: 'KSRTC Buses',
-            desc: 'City-wide network',
-            status: 'Delayed',
-            bgColor: 'bg-red-50',
-            textColor: 'text-red-600',
-            borderColor: 'border-red-100',
-            isRealTime: false,
-            data: [
-                { label: 'Next Bus', value: '06:20 PM' },
-                { label: 'Delay', value: '+15 mins' },
-                { label: 'Route Density', value: 'High' },
-                { label: 'Last Updated', value: '2 mins ago' }
-            ]
-        },
-        {
-            id: 'taxi',
-            name: 'Uber / Auto',
-            desc: 'Last-mile travel',
-            status: 'Available',
-            bgColor: 'bg-yellow-50',
-            textColor: 'text-yellow-600',
-            borderColor: 'border-yellow-100',
-            isRealTime: false,
-            data: [
-                { label: 'ETA', value: '4 mins' },
-                { label: 'Availability', value: 'High' },
-                { label: 'Surge Pricing', value: 'None' },
-                { label: 'Last Updated', value: 'Live' }
-            ]
-        },
-    ];
+    /*
+     * Facts derived from the timetable CSVs that ship with the app.
+     *
+     * The previous version listed values like "Next Departure 06:12 PM",
+     * "Delay +15 mins" and "ETA 4 mins" — all hardcoded constants with no
+     * data source behind them. Presenting invented departure times as
+     * current information is worse than showing none, so every figure below
+     * is either computed from the real schedule files or omitted.
+     */
+    const metroFacts = useMemo<Fact[]>(() => {
+        if (metroStations.length === 0) return [];
+        const facts: Fact[] = [{ label: 'Stations', value: String(metroStations.length) }];
+        const peak = numericRange(metroStations.map((s) => s.peakFrequency));
+        const offPeak = numericRange(metroStations.map((s) => s.offPeakFrequency));
+        if (peak) facts.push({ label: 'Peak frequency', value: peak });
+        if (offPeak) facts.push({ label: 'Off-peak', value: offPeak });
+        facts.push({ label: 'Line', value: 'Aluva – Pettah' });
+        return facts;
+    }, [metroStations]);
+
+    const waterFacts = useMemo<Fact[]>(() => {
+        if (waterMetroSchedules.length === 0) return [];
+        const facts: Fact[] = [
+            { label: 'Routes', value: String(waterMetroSchedules.length) },
+        ];
+        const freq = numericRange(waterMetroSchedules.map((s) => s.frequency));
+        if (freq) facts.push({ label: 'Frequency', value: freq });
+        const fares = waterMetroSchedules
+            .map((s) => Number.parseFloat(s.fare))
+            .filter((n) => Number.isFinite(n));
+        if (fares.length > 0) {
+            const min = Math.min(...fares);
+            const max = Math.max(...fares);
+            facts.push({
+                label: 'Fare',
+                value: min === max ? `₹${min}` : `₹${min}–₹${max}`,
+            });
+        }
+        return facts;
+    }, [waterMetroSchedules]);
+
+    const modes: {
+        id: string;
+        name: string;
+        desc: string;
+        icon: LucideIcon;
+        fg: string;
+        bg: string;
+        facts: Fact[];
+        links?: { label: string; href: string }[];
+        note?: string;
+    }[] = [
+            {
+                id: 'metro',
+                name: 'Kochi Metro',
+                desc: 'Aluva to Pettah, elevated line',
+                icon: TrainFront,
+                fg: 'text-cat-transport',
+                bg: 'bg-cat-transport-soft',
+                facts: metroFacts,
+                links: [
+                    { label: 'Official site', href: 'https://kochimetro.org/' },
+                ],
+            },
+            {
+                id: 'water',
+                name: 'Water Metro',
+                desc: 'Ferry routes across the backwaters',
+                icon: Ship,
+                fg: 'text-cat-classified',
+                bg: 'bg-cat-classified-soft',
+                facts: waterFacts,
+                links: [
+                    {
+                        label: 'Official site',
+                        href: 'https://kochiwatermetro.com/',
+                    },
+                ],
+            },
+            {
+                id: 'bus',
+                name: 'Buses',
+                desc: 'KSRTC and private city services',
+                icon: Bus,
+                fg: 'text-cat-places',
+                bg: 'bg-cat-places-soft',
+                // No invented timings: bus arrivals here are not tracked.
+                facts: [
+                    { label: 'Coverage', value: 'City-wide' },
+                    { label: 'Ticketing', value: 'On board' },
+                ],
+                links: [
+                    {
+                        label: 'KSRTC online booking',
+                        href: 'https://online.keralartc.com/',
+                    },
+                ],
+                note: 'Live bus arrival times are not available in this app. Check at the stop or with the operator.',
+            },
+            {
+                id: 'taxi',
+                name: 'Autos & cabs',
+                desc: 'Last-mile travel',
+                icon: Car,
+                fg: 'text-cat-stores',
+                bg: 'bg-cat-stores-soft',
+                facts: [
+                    { label: 'Autos', value: 'Metered / negotiated' },
+                    { label: 'Apps', value: 'Uber, Ola, Rapido' },
+                ],
+                note: 'Fares and availability change through the day; confirm in your ride app.',
+            },
+        ];
 
     return (
         <section>
-            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span>🚍</span> Public Transport
+            <h2 className="page-x text-[17px] font-bold tracking-tight text-foreground">
+                Getting around
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {transportModes.map((mode) => (
-                    <div
-                        key={mode.id}
-                        onClick={() => setSelectedMode(selectedMode === mode.id ? null : mode.id)}
-                        className={`bg-white p-6 rounded-2xl shadow-sm border transition-all cursor-pointer group ${selectedMode === mode.id
-                            ? 'border-blue-500 shadow-md ring-2 ring-blue-200'
-                            : 'border-gray-100 hover:shadow-md'
-                            }`}
+
+            <ul className="page-x mt-3 space-y-2.5">
+                {modes.map((mode) => {
+                    const expanded = open === mode.id;
+                    const Icon = mode.icon;
+                    const panelId = `transport-panel-${mode.id}`;
+
+                    return (
+                        <li
+                            key={mode.id}
+                            className="overflow-hidden rounded-2xl border border-line bg-surface shadow-e1"
+                        >
+                            <h3>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setOpen(expanded ? null : mode.id)
+                                    }
+                                    aria-expanded={expanded}
+                                    aria-controls={panelId}
+                                    className="press flex w-full items-center gap-3.5 p-4 text-left"
+                                >
+                                    <span
+                                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${mode.bg} ${mode.fg}`}
+                                    >
+                                        <Icon size={20} />
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block text-[15px] font-bold text-foreground">
+                                            {mode.name}
+                                        </span>
+                                        <span className="mt-0.5 block truncate text-xs text-muted">
+                                            {mode.desc}
+                                        </span>
+                                    </span>
+                                    <ChevronDown
+                                        size={18}
+                                        className={`shrink-0 text-faint transition-transform duration-200 ${expanded ? 'rotate-180' : ''
+                                            }`}
+                                    />
+                                </button>
+                            </h3>
+
+                            {expanded && (
+                                <div
+                                    id={panelId}
+                                    className="dk-fade-up border-t border-line px-4 pb-4 pt-3.5"
+                                >
+                                    {mode.facts.length > 0 && (
+                                        <dl className="grid grid-cols-2 gap-2">
+                                            {mode.facts.map((f) => (
+                                                <div
+                                                    key={f.label}
+                                                    className="rounded-xl bg-surface-2 px-3 py-2"
+                                                >
+                                                    <dt className="text-[10px] font-bold uppercase tracking-wide text-faint">
+                                                        {f.label}
+                                                    </dt>
+                                                    <dd className="mt-0.5 text-sm font-bold text-foreground">
+                                                        {f.value}
+                                                    </dd>
+                                                </div>
+                                            ))}
+                                        </dl>
+                                    )}
+
+                                    {mode.note && (
+                                        <p className="mt-3 flex items-start gap-1.5 text-xs leading-relaxed text-muted">
+                                            <Info
+                                                size={13}
+                                                className="mt-0.5 shrink-0 text-faint"
+                                            />
+                                            {mode.note}
+                                        </p>
+                                    )}
+
+                                    {mode.links && (
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {mode.links.map((l) => (
+                                                <a
+                                                    key={l.href}
+                                                    href={l.href}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="press inline-flex h-9 items-center gap-1.5 rounded-lg bg-surface-2 px-3 text-[13px] font-semibold text-foreground"
+                                                >
+                                                    {l.label}
+                                                    <ExternalLink size={13} />
+                                                </a>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {mode.id === 'metro' && (
+                                        <MetroTable
+                                            stations={metroStations}
+                                            error={metroError}
+                                        />
+                                    )}
+                                    {mode.id === 'water' && (
+                                        <WaterTable
+                                            schedules={waterMetroSchedules}
+                                            error={waterMetroError}
+                                        />
+                                    )}
+                                </div>
+                            )}
+                        </li>
+                    );
+                })}
+            </ul>
+        </section>
+    );
+}
+
+function ScheduleNote() {
+    return (
+        <p className="mt-2 text-[11px] leading-relaxed text-faint">
+            Published timetable, not live running data. Verify before
+            travelling.
+        </p>
+    );
+}
+
+function MetroTable({
+    stations,
+    error,
+}: {
+    stations: MetroStation[];
+    error: string | null;
+}) {
+    if (error) {
+        return (
+            <Notice tone="error" className="mt-3">
+                {error}
+            </Notice>
+        );
+    }
+    if (stations.length === 0) {
+        return (
+            <p className="mt-3 text-xs text-muted">
+                Timetable not available right now.
+            </p>
+        );
+    }
+
+    return (
+        <div className="mt-3">
+            <h4 className="text-[13px] font-bold text-foreground">
+                Station timetable
+            </h4>
+            {/* Its own scroll container, so a 6-column table never forces the
+                whole page to scroll sideways on a phone. */}
+            <div className="mt-2 -mx-4 overflow-x-auto px-4">
+                <table className="w-full min-w-[560px] border-separate border-spacing-0 text-[13px]">
+                    <thead>
+                        <tr className="text-left">
+                            <th className="sticky left-0 bg-surface pb-2 pr-3 font-bold text-foreground">
+                                Station
+                            </th>
+                            <th className="pb-2 pr-3 text-center font-semibold text-muted">
+                                First
+                                <span className="block text-[10px] font-normal text-faint">
+                                    Aluva
+                                </span>
+                            </th>
+                            <th className="pb-2 pr-3 text-center font-semibold text-muted">
+                                First
+                                <span className="block text-[10px] font-normal text-faint">
+                                    Pettah
+                                </span>
+                            </th>
+                            <th className="pb-2 pr-3 text-center font-semibold text-muted">
+                                Last
+                                <span className="block text-[10px] font-normal text-faint">
+                                    Aluva
+                                </span>
+                            </th>
+                            <th className="pb-2 pr-3 text-center font-semibold text-muted">
+                                Last
+                                <span className="block text-[10px] font-normal text-faint">
+                                    Pettah
+                                </span>
+                            </th>
+                            <th className="pb-2 text-center font-semibold text-muted">
+                                Every
+                                <span className="block text-[10px] font-normal text-faint">
+                                    peak/off
+                                </span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {stations.map((s) => (
+                            <tr key={s.station}>
+                                <td className="sticky left-0 border-t border-line bg-surface py-2.5 pr-3 font-semibold text-foreground">
+                                    {s.station}
+                                </td>
+                                <Cell value={s.firstTrainAluva} />
+                                <Cell value={s.firstTrainPettah} />
+                                <Cell value={s.lastTrainAluva} />
+                                <Cell value={s.lastTrainPettah} />
+                                <td className="border-t border-line py-2.5 text-center">
+                                    <span className="rounded bg-cat-transport-soft px-1.5 py-0.5 text-[11px] font-bold text-cat-transport">
+                                        {s.peakFrequency}/{s.offPeakFrequency}
+                                    </span>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            <ScheduleNote />
+        </div>
+    );
+}
+
+function Cell({ value }: { value: string }) {
+    const empty = !value || value === '—';
+    return (
+        <td
+            className={`border-t border-line py-2.5 pr-3 text-center tabular-nums ${empty ? 'text-faint' : 'text-muted'
+                }`}
+        >
+            {empty ? '—' : value}
+        </td>
+    );
+}
+
+function WaterTable({
+    schedules,
+    error,
+}: {
+    schedules: WaterMetroSchedule[];
+    error: string | null;
+}) {
+    if (error) {
+        return (
+            <Notice tone="error" className="mt-3">
+                {error}
+            </Notice>
+        );
+    }
+    if (schedules.length === 0) {
+        return (
+            <p className="mt-3 text-xs text-muted">
+                Schedule not available right now.
+            </p>
+        );
+    }
+
+    return (
+        <div className="mt-3">
+            <h4 className="text-[13px] font-bold text-foreground">
+                Route schedule
+            </h4>
+            {/* Cards rather than a 7-column table: this reads far better on a
+                phone than horizontal scrolling. */}
+            <ul className="mt-2 space-y-2">
+                {schedules.map((s) => (
+                    <li
+                        key={`${s.route}-${s.from}-${s.to}`}
+                        className="rounded-xl bg-surface-2 p-3"
                     >
-                        <div className="flex justify-between items-start mb-4">
-                            <div>
-                                <h3 className="text-lg font-bold text-gray-900">{mode.name}</h3>
-                                <p className="text-xs text-gray-500 font-medium">{mode.desc}</p>
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                                <p className="text-[13px] font-bold text-foreground">
+                                    {s.from} → {s.to}
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-faint">
+                                    {s.route}
+                                </p>
                             </div>
-                            <span
-                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide ${mode.status === 'Operational' || mode.status === 'On Time' || mode.status === 'Available'
-                                    ? 'bg-green-50 text-green-600'
-                                    : 'bg-red-50 text-red-600'
-                                    }`}
-                            >
-                                {mode.status}
+                            <span className="shrink-0 rounded bg-cat-classified-soft px-2 py-0.5 text-[12px] font-bold text-cat-classified">
+                                ₹{s.fare}
                             </span>
                         </div>
-
-                        <div className="grid grid-cols-2 gap-y-3 gap-x-4 pt-4 border-t border-gray-50">
-                            {mode.data.map((item, i) => (
-                                <div key={i}>
-                                    <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold mb-0.5">
-                                        {item.label}
-                                    </div>
-                                    <div className="text-sm font-bold text-gray-700 group-hover:text-gray-900 transition-colors">
-                                        {item.value}
-                                    </div>
-                                </div>
-                            ))}
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted">
+                            <span>
+                                First{' '}
+                                <strong className="font-semibold text-foreground">
+                                    {s.firstTrip}
+                                </strong>
+                            </span>
+                            <span>
+                                Last{' '}
+                                <strong className="font-semibold text-foreground">
+                                    {s.lastTrip}
+                                </strong>
+                            </span>
+                            <span>
+                                Every{' '}
+                                <strong className="font-semibold text-foreground">
+                                    {s.frequency} min
+                                </strong>
+                            </span>
                         </div>
-
-                        {!mode.isRealTime && (
-                            <div className="mt-3 pt-2 border-t border-dashed border-gray-100 text-[10px] text-amber-600 flex items-center gap-1.5 font-medium">
-                                <span>⚠️</span>
-                                <span>Live updates unavailable. Showing static estimates.</span>
-                            </div>
-                        )}
-                    </div>
+                    </li>
                 ))}
-            </div>
-
-            {/* Metro Timetable - Only shown when Kochi Metro is selected */}
-            {selectedMode === 'metro' && (
-                <div className="mt-6 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
-                    <div className="bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4 border-b border-blue-200 flex justify-between items-center flex-wrap gap-2">
-                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                            <span>🚇</span> Kochi Metro Timetable
-                        </h3>
-                        <span className="text-[10px] font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-100">
-                            ⚠️ Static data for reference only
-                        </span>
-                    </div>
-
-                    {metroError ? (
-                        <div className="p-8 text-center">
-                            <div className="text-4xl mb-2">⚠️</div>
-                            <p className="text-red-600 font-medium text-sm">{metroError}</p>
-                        </div>
-                    ) : metroStations.length > 0 ? (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-gray-50 border-b border-gray-200">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left font-bold text-gray-700 sticky left-0 bg-gray-50">
-                                            Station
-                                        </th>
-                                        <th className="px-4 py-3 text-center font-bold text-gray-700">
-                                            <div className="text-xs">First Train</div>
-                                            <div className="text-[10px] text-gray-500 font-normal">(from Aluva)</div>
-                                        </th>
-                                        <th className="px-4 py-3 text-center font-bold text-gray-700">
-                                            <div className="text-xs">First Train</div>
-                                            <div className="text-[10px] text-gray-500 font-normal">(from Pettah)</div>
-                                        </th>
-                                        <th className="px-4 py-3 text-center font-bold text-gray-700">
-                                            <div className="text-xs">Last Train</div>
-                                            <div className="text-[10px] text-gray-500 font-normal">(from Aluva)</div>
-                                        </th>
-                                        <th className="px-4 py-3 text-center font-bold text-gray-700">
-                                            <div className="text-xs">Last Train</div>
-                                            <div className="text-[10px] text-gray-500 font-normal">(from Pettah)</div>
-                                        </th>
-                                        <th className="px-4 py-3 text-center font-bold text-gray-700">
-                                            <div className="text-xs">Frequency</div>
-                                            <div className="text-[10px] text-gray-500 font-normal">(Peak / Off-Peak)</div>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {metroStations.map((station, i) => (
-                                        <tr key={i} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-4 py-3 font-semibold text-gray-900 sticky left-0 bg-white">
-                                                {station.station}
-                                            </td>
-                                            <td className="px-4 py-3 text-center text-gray-600">
-                                                {station.firstTrainAluva === '—' ? (
-                                                    <span className="text-gray-300">—</span>
-                                                ) : (
-                                                    station.firstTrainAluva
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3 text-center text-gray-600">
-                                                {station.firstTrainPettah === '—' ? (
-                                                    <span className="text-gray-300">—</span>
-                                                ) : (
-                                                    station.firstTrainPettah
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3 text-center text-gray-600">
-                                                {station.lastTrainAluva === '—' ? (
-                                                    <span className="text-gray-300">—</span>
-                                                ) : (
-                                                    station.lastTrainAluva
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3 text-center text-gray-600">
-                                                {station.lastTrainPettah === '—' ? (
-                                                    <span className="text-gray-300">—</span>
-                                                ) : (
-                                                    station.lastTrainPettah
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <span className="inline-block px-2 py-1 rounded bg-blue-50 text-blue-700 font-medium text-xs">
-                                                    {station.peakFrequency} / {station.offPeakFrequency} mins
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="p-8 text-center text-gray-400">
-                            <div className="text-4xl mb-2">🚇</div>
-                            <p className="text-sm">Metro timetable not available</p>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Water Metro Schedule - Only shown when Water Metro is selected */}
-            {selectedMode === 'water' && (
-                <div className="mt-6 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in">
-                    <div className="bg-gradient-to-r from-teal-50 to-teal-100 px-6 py-4 border-b border-teal-200 flex justify-between items-center flex-wrap gap-2">
-                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                            <span>⛴️</span> Water Metro Schedule
-                        </h3>
-                        <span className="text-[10px] font-medium text-teal-600 bg-teal-50 px-2 py-1 rounded-full border border-teal-100">
-                            ⚠️ Static data for reference only
-                        </span>
-                    </div>
-
-                    {waterMetroError ? (
-                        <div className="p-8 text-center">
-                            <div className="text-4xl mb-2">⚠️</div>
-                            <p className="text-red-600 font-medium text-sm">{waterMetroError}</p>
-                        </div>
-                    ) : waterMetroSchedules.length > 0 ? (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-gray-50 border-b border-gray-200">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left font-bold text-gray-700 sticky left-0 bg-gray-50">Route</th>
-                                        <th className="px-4 py-3 text-left font-bold text-gray-700">From</th>
-                                        <th className="px-4 py-3 text-left font-bold text-gray-700">To</th>
-                                        <th className="px-4 py-3 text-center font-bold text-gray-700">First Trip</th>
-                                        <th className="px-4 py-3 text-center font-bold text-gray-700">Last Trip</th>
-                                        <th className="px-4 py-3 text-center font-bold text-gray-700">Frequency</th>
-                                        <th className="px-4 py-3 text-center font-bold text-gray-700">Fare</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {waterMetroSchedules.map((schedule, i) => (
-                                        <tr key={i} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-4 py-3 font-semibold text-gray-900 sticky left-0 bg-white">{schedule.route}</td>
-                                            <td className="px-4 py-3 text-gray-600">{schedule.from}</td>
-                                            <td className="px-4 py-3 text-gray-600">{schedule.to}</td>
-                                            <td className="px-4 py-3 text-center text-gray-600">{schedule.firstTrip}</td>
-                                            <td className="px-4 py-3 text-center text-gray-600">{schedule.lastTrip}</td>
-                                            <td className="px-4 py-3 text-center text-gray-600">{schedule.frequency} mins</td>
-                                            <td className="px-4 py-3 text-center font-bold text-teal-600">₹{schedule.fare}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <div className="p-8 text-center text-gray-400">
-                            <div className="text-4xl mb-2">⛴️</div>
-                            <p className="text-sm">Water Metro schedule not available</p>
-                        </div>
-                    )}
-                </div>
-            )}
-
-        </section>
+            </ul>
+            <ScheduleNote />
+        </div>
     );
 }

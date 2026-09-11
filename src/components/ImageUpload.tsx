@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import { Loader2, Upload, X } from 'lucide-react';
-import Image from 'next/image';
+import { SafeImage } from '@/components/ui/SafeImage';
+import { Notice } from '@/components/ui/Notice';
+import { cn } from '@/lib/cn';
 
 interface ImageUploadProps {
     value: string;
@@ -10,123 +12,117 @@ interface ImageUploadProps {
     className?: string;
 }
 
-export default function ImageUpload({ value, onChange, className = '' }: ImageUploadProps) {
+const CLOUD_NAME = 'mithu';
+const UPLOAD_PRESET = 'dearkochi_unsigned';
+const MAX_BYTES = 10 * 1024 * 1024;
+
+export default function ImageUpload({
+    value,
+    onChange,
+    className = '',
+}: ImageUploadProps) {
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Validate file type
+        setError(null);
+
         if (!file.type.startsWith('image/')) {
-            alert('Please upload an image file');
+            setError('Please choose an image file.');
+            e.target.value = '';
+            return;
+        }
+
+        // Phone cameras routinely produce files large enough to fail the
+        // upload; catching it here gives a clearer message than a 4xx.
+        if (file.size > MAX_BYTES) {
+            setError('That image is over 10MB. Please choose a smaller one.');
+            e.target.value = '';
             return;
         }
 
         setLoading(true);
         const formData = new FormData();
         formData.append('file', file);
-        // Using custom unsigned upload preset 'dearkochi_unsigned'
-        // This preset must be created in Cloudinary dashboard:
-        // Settings → Upload → Upload presets → Add upload preset
-        // Name: dearkochi_unsigned, Signing Mode: Unsigned
-        formData.append('upload_preset', 'dearkochi_unsigned');
+        formData.append('upload_preset', UPLOAD_PRESET);
 
         try {
-            // Cloud name 'mithu' inferred from existing codebase
-            const response = await fetch('https://api.cloudinary.com/v1_1/mithu/image/upload', {
-                method: 'POST',
-                body: formData,
-            });
+            const response = await fetch(
+                `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+                { method: 'POST', body: formData },
+            );
 
-            // Log response status first
-            console.log('Response status:', response.status);
-            console.log('Response ok:', response.ok);
-
-            // Check if response is OK (2xx status)
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error('HTTP Error Response:', errorText);
-
-                try {
-                    const errorData = JSON.parse(errorText);
-                    const errorMsg = errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`;
-                    alert(`Upload failed: ${errorMsg}`);
-                } catch {
-                    alert(`Upload failed: HTTP ${response.status} - ${response.statusText || 'Unknown error'}`);
-                }
-                return;
+                // Cloudinary's own error text names presets and API keys —
+                // useful in the console, not on screen.
+                console.error('Cloudinary error:', await response.text());
+                throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
-
-            // Enhanced success logging
-            console.log('Cloudinary response:', data);
-
-            if (data.secure_url) {
-                onChange(data.secure_url);
-                console.log('Upload successful! URL:', data.secure_url);
-            } else {
-                console.error('Upload failed - No secure_url in response:', data);
-                alert('Upload failed: No image URL received from Cloudinary. Please check your upload preset configuration.');
+            if (!data.secure_url) {
+                console.error('Upload returned no secure_url:', data);
+                throw new Error('No URL returned');
             }
-        } catch (error) {
-            console.error('Error uploading image:', error);
-            alert('Error uploading image. Please check your internet connection and try again.');
+
+            onChange(data.secure_url);
+        } catch (err) {
+            console.error('Error uploading image:', err);
+            setError('Upload failed. Check your connection and try again.');
         } finally {
             setLoading(false);
+            e.target.value = '';
         }
     };
 
-    const clearImage = () => {
-        onChange('');
-    };
-
     return (
-        <div className={`space-y-4 ${className}`}>
-            <div className="flex items-center gap-4">
-                <label className={`
-                relative flex flex-col items-center justify-center w-32 h-32 
-                border-2 border-dashed border-gray-300 rounded-lg cursor-pointer 
-                hover:border-blue-500 hover:bg-blue-50 transition-all
-                ${loading ? 'opacity-50 pointer-events-none' : ''}
-            `}>
+        <div className={cn('space-y-3', className)}>
+            <div className="flex items-center gap-3">
+                <label
+                    className={cn(
+                        'press relative flex h-28 w-28 shrink-0 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-line-strong text-muted',
+                        'hover:border-primary hover:text-primary',
+                        loading && 'pointer-events-none opacity-60',
+                    )}
+                >
                     {loading ? (
-                        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                        <Loader2 className="h-7 w-7 animate-spin text-primary" />
                     ) : (
                         <>
-                            <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                            <span className="text-xs text-gray-500 font-medium">Upload</span>
+                            <Upload size={22} />
+                            <span className="text-xs font-semibold">
+                                {value ? 'Replace' : 'Upload'}
+                            </span>
                         </>
                     )}
                     <input
                         type="file"
                         accept="image/*"
-                        className="hidden"
+                        className="sr-only"
                         onChange={handleUpload}
                         disabled={loading}
                     />
                 </label>
 
                 {value && (
-                    <div className="relative w-32 h-32 rounded-lg overflow-hidden border border-gray-200">
-                        <Image
-                            src={value}
-                            alt="Uploaded preview"
-                            fill
-                            className="object-cover"
-                        />
+                    <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-line bg-surface-2">
+                        <SafeImage src={value} alt="Uploaded preview" sizes="112px" />
                         <button
                             type="button"
-                            onClick={clearImage}
-                            className="absolute top-1 right-1 bg-black/50 hover:bg-black/70 text-white p-1 rounded-full transition-colors"
+                            onClick={() => onChange('')}
+                            aria-label="Remove image"
+                            className="press absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-surface/95 text-danger shadow-e1"
                         >
-                            <X size={14} />
+                            <X size={15} />
                         </button>
                     </div>
                 )}
             </div>
-            {value && <p className="text-xs text-green-600 font-medium">Image uploaded successfully!</p>}
+
+            {error && <Notice tone="error">{error}</Notice>}
         </div>
     );
 }

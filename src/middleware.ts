@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { ADMIN_COOKIE, verifySessionToken } from '@/lib/admin-auth';
 
 // Create a single supabase client for interacting with your database
 // Note: In middleware, we should be careful with environment variables
@@ -20,13 +21,19 @@ export async function middleware(req: NextRequest) {
             return res;
         }
 
-        // Check for admin session cookie
-        const adminSession = req.cookies.get('admin_session');
+        // Verify the cookie's signature, not merely its presence. Checking
+        // existence alone meant `document.cookie = 'admin_session=true'`
+        // was enough to reach every admin page.
+        const token = req.cookies.get(ADMIN_COOKIE)?.value;
 
-        if (!adminSession) {
-            return NextResponse.redirect(new URL('/admin/login', req.url));
+        if (!(await verifySessionToken(token))) {
+            const redirect = NextResponse.redirect(
+                new URL('/admin/login', req.url),
+            );
+            // Clear a stale or forged cookie on the way out.
+            redirect.cookies.delete(ADMIN_COOKIE);
+            return redirect;
         }
-        console.log('Middleware: Admin session valid');
     }
 
     // 1. Bypass static assets and critical paths

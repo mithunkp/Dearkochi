@@ -20,7 +20,7 @@ export default function Error({
                 <div className="text-4xl mb-4">⚠️</div>
                 <h2 className="text-xl font-bold text-gray-900 mb-2">Something went wrong!</h2>
                 <p className="text-gray-600 mb-6 text-sm">
-                    We couldn't load the transport information. Please try again later.
+                    We couldn&apos;t load the transport information. Please try again later.
                 </p>
                 <button
                     onClick={

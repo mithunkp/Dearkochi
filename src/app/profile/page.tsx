@@ -1,13 +1,28 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
-import Link from 'next/link';
-import { User, Mail, MapPin, Store, ArrowLeft, Save, Plus } from 'lucide-react';
+import {
+    User,
+    Mail,
+    Save,
+    LogOut,
+    Tag,
+    MessageCircle,
+    Settings,
+    ChevronRight,
+    CalendarDays,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-import { Header } from '@/components/Header';
-import { GlassCard } from '@/components/ui/GlassCard';
+import { Button, ButtonLink } from '@/components/ui/Button';
+import { Notice } from '@/components/ui/Notice';
+import { Sheet } from '@/components/ui/Sheet';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 type Profile = {
     id: string;
@@ -16,31 +31,52 @@ type Profile = {
     avatar_url: string | null;
 };
 
-type StoreType = {
-    id: number;
-    name: string;
-    description: string | null;
-    location: string | null;
-};
+const SHORTCUTS: {
+    href: string;
+    label: string;
+    hint: string;
+    icon: LucideIcon;
+}[] = [
+        {
+            href: '/classified/my-ads',
+            label: 'My ads',
+            hint: 'Listings you posted',
+            icon: Tag,
+        },
+        {
+            href: '/local-events',
+            label: 'My events',
+            hint: 'Events you created',
+            icon: CalendarDays,
+        },
+        {
+            href: '/chats',
+            label: 'Messages',
+            hint: 'Your conversations',
+            icon: MessageCircle,
+        },
+        {
+            href: '/settings',
+            label: 'Settings',
+            hint: 'Preferences and account',
+            icon: Settings,
+        },
+    ];
 
 export default function ProfilePage() {
     const { user, loading: authLoading, signOut } = useAuth();
-    const [profile, setProfile] = useState<Profile | null>(null);
+    const router = useRouter();
 
+    const [profile, setProfile] = useState<Profile | null>(null);
     const [loading, setLoading] = useState(true);
     const [fullName, setFullName] = useState('');
-    const [updating, setUpdating] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [feedback, setFeedback] = useState<
+        { tone: 'success' | 'error'; text: string } | null
+    >(null);
+    const [signOutOpen, setSignOutOpen] = useState(false);
 
-    useEffect(() => {
-        if (user) {
-            fetchProfile();
-
-        } else if (!authLoading) {
-            setLoading(false);
-        }
-    }, [user, authLoading]);
-
-    const fetchProfile = async () => {
+    const fetchProfile = useCallback(async () => {
         if (!user) return;
         try {
             const { data, error } = await supabase
@@ -49,141 +85,254 @@ export default function ProfilePage() {
                 .eq('id', user.uid)
                 .single();
 
-            if (error && error.code !== 'PGRST116') {
-                console.error('Error fetching profile:', error);
-            }
+            // PGRST116 is "no rows", which is expected for a new account.
+            if (error && error.code !== 'PGRST116') throw error;
 
             if (data) {
                 setProfile(data);
-                setFullName(data.full_name || '');
+                setFullName(data.full_name ?? '');
             } else {
-                // Handle case where profile doesn't exist (e.g. created before trigger)
-                // For now, just set basic info from auth user
                 setProfile({
                     id: user.uid,
-                    email: user.email || '',
+                    email: user.email ?? '',
                     full_name: null,
-                    avatar_url: null
+                    avatar_url: null,
                 });
+                setFullName(user.displayName ?? '');
             }
-        } catch (error) {
-            console.error('Error:', error);
+        } catch (err) {
+            console.error('Error fetching profile:', err);
+            setFeedback({
+                tone: 'error',
+                text: 'Could not load your profile.',
+            });
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
 
+    useEffect(() => {
+        if (user) {
+            fetchProfile();
+        } else if (!authLoading) {
+            setLoading(false);
+        }
+    }, [user, authLoading, fetchProfile]);
 
-
-    const updateProfile = async () => {
+    const saveProfile = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!user) return;
-        setUpdating(true);
+        setSaving(true);
+        setFeedback(null);
         try {
-            const updates = {
+            const { error } = await supabase.from('profiles').upsert({
                 id: user.uid,
-                full_name: fullName,
+                email: user.email,
+                full_name: fullName.trim() || null,
                 updated_at: new Date().toISOString(),
-            };
-
-            const { error } = await supabase
-                .from('profiles')
-                .upsert(updates);
-
+            });
             if (error) throw error;
             await fetchProfile();
-            alert('Profile updated!');
-        } catch (error) {
-            console.error('Error updating profile:', error);
-            alert('Error updating profile');
+            setFeedback({ tone: 'success', text: 'Profile saved.' });
+        } catch (err) {
+            console.error('Error updating profile:', err);
+            setFeedback({
+                tone: 'error',
+                text: 'Could not save your changes. Please try again.',
+            });
         } finally {
-            setUpdating(false);
+            setSaving(false);
         }
     };
 
-    if (authLoading || loading) {
-        return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
-    }
+    const handleSignOut = async () => {
+        setSignOutOpen(false);
+        await signOut();
+        router.push('/');
+    };
 
-    if (!user) {
+    if (authLoading || loading) {
         return (
-            <div className="min-h-screen flex flex-col">
-                <Header />
-                <main className="flex-1 flex items-center justify-center p-8">
-                    <GlassCard className="text-center max-w-md w-full py-12">
-                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                            <User size={32} />
-                        </div>
-                        <h1 className="text-2xl font-bold text-slate-800 mb-2">Profile</h1>
-                        <p className="text-slate-500 mb-6">Please sign in to view your profile.</p>
-                        <Link href="/login" className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium transition-colors inline-block">
-                            Sign In
-                        </Link>
-                    </GlassCard>
-                </main>
+            <div className="page-x mx-auto w-full max-w-2xl space-y-3 pt-6">
+                <Skeleton className="h-20 rounded-2xl" />
+                <Skeleton className="h-52 rounded-2xl" />
+                <Skeleton className="h-40 rounded-2xl" />
             </div>
         );
     }
 
-    return (
-        <div className="min-h-screen flex flex-col">
-            <Header />
+    if (!user) {
+        return (
+            <div className="page-x mx-auto w-full max-w-md pt-10">
+                <EmptyState
+                    icon={User}
+                    title="You're not signed in"
+                    description="Sign in to manage your profile, ads and messages."
+                    action={
+                        <ButtonLink href="/login?redirect=/profile">
+                            Sign in
+                        </ButtonLink>
+                    }
+                />
+            </div>
+        );
+    }
 
-            <main className="flex-1 px-8 py-10 max-w-4xl mx-auto w-full">
-                <div className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-4">
-                        <Link href="/" className="w-10 h-10 rounded-full bg-white/60 backdrop-blur-sm border border-white/40 flex items-center justify-center text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">
-                            <ArrowLeft size={20} />
-                        </Link>
-                        <div>
-                            <h1 className="text-3xl font-bold text-slate-800">Your Profile</h1>
-                            <p className="text-sm text-slate-500 font-medium">Manage your account and listings</p>
+    const initial = (profile?.full_name ?? user.email ?? '?')
+        .trim()
+        .charAt(0)
+        .toUpperCase();
+
+    return (
+        <div className="mx-auto w-full max-w-2xl pb-10">
+            {/* Identity summary */}
+            <div className="page-x pt-5">
+                <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface p-4 shadow-e1">
+                    <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary text-2xl font-extrabold text-primary-foreground">
+                        {initial}
+                    </span>
+                    <div className="min-w-0">
+                        <h1 className="truncate text-[19px] font-extrabold tracking-tight text-foreground">
+                            {profile?.full_name || 'Your profile'}
+                        </h1>
+                        <p className="mt-0.5 flex items-center gap-1.5 truncate text-[13px] text-muted">
+                            <Mail size={13} className="shrink-0 text-faint" />
+                            {user.email}
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {feedback && (
+                <div className="page-x mt-4">
+                    <Notice tone={feedback.tone}>{feedback.text}</Notice>
+                </div>
+            )}
+
+            {/* Editable details */}
+            <form onSubmit={saveProfile} className="page-x mt-4">
+                <div className="rounded-2xl border border-line bg-surface p-4 shadow-e1">
+                    <h2 className="text-[15px] font-bold text-foreground">
+                        Personal information
+                    </h2>
+
+                    <div className="mt-4">
+                        <label
+                            htmlFor="fullName"
+                            className="mb-1.5 block text-[13px] font-semibold text-foreground"
+                        >
+                            Full name
+                        </label>
+                        <div className="relative">
+                            <User
+                                size={17}
+                                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint"
+                            />
+                            <input
+                                id="fullName"
+                                type="text"
+                                autoComplete="name"
+                                value={fullName}
+                                onChange={(e) => setFullName(e.target.value)}
+                                placeholder="How should we call you?"
+                                className="h-12 w-full rounded-xl border border-line bg-surface pl-11 pr-4 text-[15px] text-foreground placeholder:text-faint focus:border-primary focus:outline-none"
+                            />
                         </div>
                     </div>
 
-                </div>
+                    <div className="mt-3">
+                        <span className="mb-1.5 block text-[13px] font-semibold text-foreground">
+                            Email
+                        </span>
+                        <p className="flex h-12 items-center gap-2.5 rounded-xl bg-surface-2 px-3.5 text-[15px] text-muted">
+                            <Mail size={16} className="shrink-0 text-faint" />
+                            <span className="truncate">{user.email}</span>
+                        </p>
+                        <p className="mt-1.5 text-xs text-faint">
+                            Your email comes from your sign-in method and
+                            can&rsquo;t be changed here.
+                        </p>
+                    </div>
 
-                <div className="space-y-8">
-                    <GlassCard>
-                        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                            <User className="text-blue-500" size={24} /> Personal Information
-                        </h2>
-                        <div className="space-y-4 max-w-lg">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Email</label>
-                                <div className="flex items-center px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-500">
-                                    <Mail size={16} className="mr-3 opacity-50" />
-                                    {user.email}
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Full Name</label>
-                                <div className="relative">
-                                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                                        <User size={16} />
-                                    </div>
-                                    <input
-                                        type="text"
-                                        value={fullName}
-                                        onChange={(e) => setFullName(e.target.value)}
-                                        className="block w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                        placeholder="Enter your full name"
-                                    />
-                                </div>
-                            </div>
-                            <button
-                                onClick={updateProfile}
-                                disabled={updating}
-                                className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors flex items-center gap-2"
+                    <Button
+                        type="submit"
+                        loading={saving}
+                        className="mt-4 w-full sm:w-auto"
+                    >
+                        <Save size={16} />
+                        Save changes
+                    </Button>
+                </div>
+            </form>
+
+            {/* Shortcuts, so the profile tab is a real hub rather than one form */}
+            <div className="page-x mt-6">
+                <h2 className="mb-2.5 text-[13px] font-bold uppercase tracking-wide text-faint">
+                    Your activity
+                </h2>
+                <ul className="overflow-hidden rounded-2xl border border-line bg-surface shadow-e1">
+                    {SHORTCUTS.map((s, i) => (
+                        <li key={s.href}>
+                            <Link
+                                href={s.href}
+                                className={`flex items-center gap-3.5 p-3.5 transition-colors hover:bg-surface-2 ${i > 0 ? 'border-t border-line' : ''
+                                    }`}
                             >
-                                <Save size={18} />
-                                {updating ? 'Saving...' : 'Save Changes'}
-                            </button>
-                        </div>
-                    </GlassCard>
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-muted">
+                                    <s.icon size={18} />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                    <span className="block text-[15px] font-semibold text-foreground">
+                                        {s.label}
+                                    </span>
+                                    <span className="block truncate text-xs text-muted">
+                                        {s.hint}
+                                    </span>
+                                </span>
+                                <ChevronRight
+                                    size={17}
+                                    className="shrink-0 text-faint"
+                                />
+                            </Link>
+                        </li>
+                    ))}
+                </ul>
+            </div>
 
+            <div className="page-x mt-6">
+                <Button
+                    variant="secondary"
+                    block
+                    onClick={() => setSignOutOpen(true)}
+                    className="text-danger"
+                >
+                    <LogOut size={16} />
+                    Sign out
+                </Button>
+            </div>
 
+            <Sheet
+                open={signOutOpen}
+                onClose={() => setSignOutOpen(false)}
+                title="Sign out?"
+            >
+                <p className="text-sm leading-relaxed text-muted">
+                    You&rsquo;ll need to sign in again to post ads, create
+                    events or send messages.
+                </p>
+                <div className="mt-5 flex gap-2">
+                    <Button
+                        variant="secondary"
+                        block
+                        onClick={() => setSignOutOpen(false)}
+                    >
+                        Stay signed in
+                    </Button>
+                    <Button variant="danger" block onClick={handleSignOut}>
+                        Sign out
+                    </Button>
                 </div>
-            </main>
+            </Sheet>
         </div>
     );
 }

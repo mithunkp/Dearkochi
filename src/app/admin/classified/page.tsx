@@ -1,125 +1,237 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Trash2, Search, Tag, ExternalLink } from 'lucide-react';
+import { Trash2, Tag, Search, X } from 'lucide-react';
 
-interface ClassifiedAd {
+import { SafeImage } from '@/components/ui/SafeImage';
+import { EmptyState, ErrorState } from '@/components/ui/EmptyState';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { Chip, ChipRow } from '@/components/ui/Chip';
+import { useConfirm } from '@/components/ui/ConfirmSheet';
+import { formatPrice, formatRelative } from '@/lib/format';
+
+type AdminAd = {
     id: number;
     title: string;
-    price: number;
-    ad_type: string;
-    category: { name: string } | null; // Join result
-    image_url?: string;
+    price: number | null;
+    price_unit: string | null;
+    ad_type: string | null;
+    image_url: string | null;
     status: string;
     created_at: string;
-}
+    classified_categories: { name: string } | null;
+};
+
+const STATUSES = ['all', 'active', 'sold', 'deleted'] as const;
+type StatusFilter = (typeof STATUSES)[number];
 
 export default function AdminClassifieds() {
-    const [ads, setAds] = useState<ClassifiedAd[]>([]);
+    const [ads, setAds] = useState<AdminAd[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [status, setStatus] = useState<StatusFilter>('all');
+    const [query, setQuery] = useState('');
+    const { confirm, element } = useConfirm();
 
-    useEffect(() => {
-        fetchAds();
-    }, []);
-
-    const fetchAds = async () => {
+    const fetchAds = useCallback(async () => {
         setLoading(true);
-        // Note: Join syntax depends on foreign key setup.
-        // categorized by category_id? Let's assume fetching raw first or simple join
-        const { data, error } = await supabase
+        setError(null);
+
+        const { data, error: dbError } = await supabase
             .from('classified_ads')
             .select('*, classified_categories(name)')
             .order('created_at', { ascending: false });
 
-        if (!error && data) {
-            // Map join result if necessary or just use as is
-            setAds(data as any);
+        if (dbError) {
+            console.error('Error fetching ads:', dbError);
+            setError('Could not load classifieds.');
+        } else {
+            setAds((data ?? []) as AdminAd[]);
         }
         setLoading(false);
+    }, []);
+
+    useEffect(() => {
+        fetchAds();
+    }, [fetchAds]);
+
+    const setStatusFor = async (ad: AdminAd, next: string) => {
+        const { error: dbError } = await supabase
+            .from('classified_ads')
+            .update({ status: next })
+            .eq('id', ad.id);
+        if (dbError) {
+            console.error('Error updating status:', dbError);
+            setError('Could not update that ad.');
+            return;
+        }
+        fetchAds();
     };
 
-    const handleDelete = async (id: number) => {
-        if (!confirm('Are you sure you want to delete this ad?')) return;
+    const remove = (ad: AdminAd) =>
+        confirm({
+            title: 'Permanently delete this ad?',
+            body: `“${ad.title}” will be erased from the database. To hide it instead, set its status to deleted.`,
+            onConfirm: async () => {
+                const { error: dbError } = await supabase
+                    .from('classified_ads')
+                    .delete()
+                    .eq('id', ad.id);
+                if (dbError) {
+                    console.error('Error deleting ad:', dbError);
+                    setError('Could not delete that ad.');
+                    return;
+                }
+                await fetchAds();
+            },
+        });
 
-        const { error } = await supabase.from('classified_ads').delete().eq('id', id);
-        if (!error) fetchAds();
-        else alert('Error deleting: ' + error.message);
-    };
-
-    // Status toggle (Active <-> Sold/Deleted)
-    const toggleStatus = async (ad: ClassifiedAd) => {
-        const newStatus = ad.status === 'active' ? 'sold' : 'active';
-        const { error } = await supabase.from('classified_ads').update({ status: newStatus }).eq('id', ad.id);
-        if (!error) fetchAds();
-    };
+    const visible = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        return ads.filter((ad) => {
+            if (status !== 'all' && ad.status !== status) return false;
+            if (!q) return true;
+            return ad.title.toLowerCase().includes(q);
+        });
+    }, [ads, status, query]);
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold text-gray-900">Manage Classifieds</h1>
+        <div className="space-y-5">
+            <div>
+                <h1 className="text-[24px] font-extrabold tracking-tight text-foreground">
+                    Classifieds
+                </h1>
+                <p className="mt-0.5 text-sm text-muted">
+                    {loading ? 'Loading…' : `${ads.length} total`}
+                </p>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                            <th className="px-6 py-4 font-semibold text-gray-700">Ad Title</th>
-                            <th className="px-6 py-4 font-semibold text-gray-700">Price</th>
-                            <th className="px-6 py-4 font-semibold text-gray-700">Type</th>
-                            <th className="px-6 py-4 font-semibold text-gray-700">Status</th>
-                            <th className="px-6 py-4 font-semibold text-gray-700 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {ads.map((ad) => (
-                            <tr key={ad.id} className="hover:bg-gray-50">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden">
-                                            {ad.image_url ? (
-                                                <img src={ad.image_url} className="w-full h-full object-cover" />
-                                            ) : (
-                                                <Tag className="m-2 text-gray-400" />
-                                            )}
-                                        </div>
-                                        <span className="font-medium text-gray-900">{ad.title}</span>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-gray-600">₹{ad.price}</td>
-                                <td className="px-6 py-4">
-                                    <span className="capitalize px-2 py-1 bg-gray-100 rounded text-xs font-medium text-gray-600">
-                                        {ad.ad_type}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <button
-                                        onClick={() => toggleStatus(ad)}
-                                        className={`px-2 py-1 rounded-full text-xs font-bold ${ad.status === 'active'
-                                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                            }`}
-                                    >
-                                        {ad.status}
-                                    </button>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <button
-                                        onClick={() => handleDelete(ad.id)}
-                                        className="text-gray-400 hover:text-red-600 transition-colors p-2"
-                                        title="Delete Ad"
-                                    >
-                                        <Trash2 size={18} />
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
-                        {ads.length === 0 && !loading && (
-                            <tr><td colSpan={5} className="p-8 text-center text-gray-500">No ads found.</td></tr>
-                        )}
-                    </tbody>
-                </table>
+            <div className="relative">
+                <Search
+                    size={17}
+                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint"
+                />
+                <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search by title…"
+                    aria-label="Search ads"
+                    className="h-12 w-full rounded-xl border border-line bg-surface pl-11 pr-11 text-[15px] text-foreground placeholder:text-faint focus:border-primary focus:outline-none"
+                />
+                {query && (
+                    <button
+                        type="button"
+                        onClick={() => setQuery('')}
+                        aria-label="Clear search"
+                        className="press absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-muted hover:bg-surface-2"
+                    >
+                        <X size={17} />
+                    </button>
+                )}
             </div>
+
+            <div className="-mx-4 lg:-mx-8">
+                <ChipRow aria-label="Filter by status" className="lg:px-8">
+                    {STATUSES.map((s) => (
+                        <Chip
+                            key={s}
+                            active={status === s}
+                            onClick={() => setStatus(s)}
+                        >
+                            {s}
+                        </Chip>
+                    ))}
+                </ChipRow>
+            </div>
+
+            {loading ? (
+                <div className="space-y-2.5">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <Skeleton key={i} className="h-20 rounded-2xl" />
+                    ))}
+                </div>
+            ) : error ? (
+                <ErrorState description={error} onRetry={fetchAds} />
+            ) : visible.length === 0 ? (
+                <EmptyState
+                    icon={Tag}
+                    title="No ads"
+                    description="Nothing matches the current filters."
+                />
+            ) : (
+                <ul className="space-y-2.5">
+                    {visible.map((ad) => (
+                        <li
+                            key={ad.id}
+                            className="rounded-2xl border border-line bg-surface p-3.5 shadow-e1"
+                        >
+                            <div className="flex items-start gap-3">
+                                <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-surface-2">
+                                    <SafeImage
+                                        src={ad.image_url}
+                                        alt=""
+                                        sizes="48px"
+                                    />
+                                </span>
+
+                                <div className="min-w-0 flex-1">
+                                    <h2 className="truncate text-[15px] font-bold text-foreground">
+                                        {ad.title}
+                                    </h2>
+                                    <p className="mt-0.5 text-xs text-muted">
+                                        {formatPrice(ad.price, ad.price_unit) ??
+                                            'No price'}
+                                        {ad.classified_categories &&
+                                            ` · ${ad.classified_categories.name}`}
+                                        {ad.ad_type && ` · ${ad.ad_type}`}
+                                    </p>
+                                    <p className="mt-0.5 text-[11px] text-faint">
+                                        {formatRelative(ad.created_at)}
+                                    </p>
+
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {(['active', 'sold', 'deleted'] as const).map(
+                                            (s) => (
+                                                <button
+                                                    key={s}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setStatusFor(ad, s)
+                                                    }
+                                                    aria-pressed={ad.status === s}
+                                                    className={`press rounded-full px-2.5 py-1 text-[11px] font-bold uppercase ${ad.status === s
+                                                            ? s === 'active'
+                                                                ? 'bg-success-soft text-success'
+                                                                : s === 'sold'
+                                                                    ? 'bg-accent-soft text-accent-foreground'
+                                                                    : 'bg-danger-soft text-danger'
+                                                            : 'bg-surface-2 text-muted'
+                                                        }`}
+                                                >
+                                                    {s}
+                                                </button>
+                                            ),
+                                        )}
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => remove(ad)}
+                                    aria-label={`Delete ${ad.title}`}
+                                    className="press tap flex shrink-0 items-center justify-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger"
+                                >
+                                    <Trash2 size={17} />
+                                </button>
+                            </div>
+                        </li>
+                    ))}
+                </ul>
+            )}
+
+            {element}
         </div>
     );
 }

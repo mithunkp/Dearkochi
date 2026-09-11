@@ -1,286 +1,470 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useCallback, useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { NewsItem, Attraction, Transport, Contact, SocialPost, Fact } from '../types';
-import { Search, ArrowLeft, ArrowRight, Calendar, MapPin, Tag } from 'lucide-react';
+import type { NewsItem, Attraction, Transport, Contact, SocialPost } from '../types';
+import {
+    Search as SearchIcon,
+    ArrowRight,
+    ExternalLink,
+    X,
+    Newspaper,
+    MapPin,
+    Bus,
+    AlertTriangle,
+    Tag,
+    Store,
+    Users,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-import { Header } from '@/components/Header';
-import { GlassCard } from '@/components/ui/GlassCard';
+import { Chip, ChipRow } from '@/components/ui/Chip';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Skeleton, LoadingAnnouncer } from '@/components/ui/Skeleton';
+import { formatRelative } from '@/lib/format';
 
-// --- Types ---
+type ResultType =
+    | 'news'
+    | 'place'
+    | 'transport'
+    | 'emergency'
+    | 'social'
+    | 'store'
+    | 'classified';
+
 type SearchResult = {
     id: string;
-    type: 'news' | 'place' | 'transport' | 'emergency' | 'social' | 'fact' | 'store' | 'classified';
+    type: ResultType;
     title: string;
     description: string;
+    /** Internal route. */
     link?: string;
+    /** Off-site destination, opened in a new tab. */
+    externalLink?: string;
     date?: string;
+};
+
+const TYPE_META: Record<
+    ResultType,
+    { label: string; icon: LucideIcon; fg: string; bg: string }
+> = {
+    news: {
+        label: 'News',
+        icon: Newspaper,
+        fg: 'text-cat-transport',
+        bg: 'bg-cat-transport-soft',
+    },
+    place: {
+        label: 'Place',
+        icon: MapPin,
+        fg: 'text-cat-places',
+        bg: 'bg-cat-places-soft',
+    },
+    transport: {
+        label: 'Transport',
+        icon: Bus,
+        fg: 'text-cat-transport',
+        bg: 'bg-cat-transport-soft',
+    },
+    emergency: {
+        label: 'Emergency',
+        icon: AlertTriangle,
+        fg: 'text-cat-emergency',
+        bg: 'bg-cat-emergency-soft',
+    },
+    social: {
+        label: 'Social',
+        icon: Users,
+        fg: 'text-cat-social',
+        bg: 'bg-cat-social-soft',
+    },
+    store: {
+        label: 'Store',
+        icon: Store,
+        fg: 'text-cat-stores',
+        bg: 'bg-cat-stores-soft',
+    },
+    classified: {
+        label: 'Classified',
+        icon: Tag,
+        fg: 'text-cat-classified',
+        bg: 'bg-cat-classified-soft',
+    },
+};
+
+type ClassifiedRow = {
+    id: number;
+    title: string;
+    description: string | null;
+    created_at: string;
+};
+
+type StoreRow = {
+    id: number;
+    name: string;
+    description: string | null;
+    location: string | null;
 };
 
 function SearchContent() {
     const searchParams = useSearchParams();
-    const query = searchParams.get('q') || '';
     const router = useRouter();
-    const [searchTerm, setSearchTerm] = useState(query);
+    const query = searchParams.get('q') ?? '';
+
+    const [term, setTerm] = useState(query);
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
-    const [hasSearched, setHasSearched] = useState(false);
+    const [searched, setSearched] = useState(false);
+    const [filter, setFilter] = useState<ResultType | 'all'>('all');
 
-    // Sync local state with URL param
+    const performSearch = useCallback(async (raw: string) => {
+        const needle = raw.trim().toLowerCase();
+        if (!needle) return;
+
+        setLoading(true);
+        setSearched(true);
+
+        const matches = (text?: string | null) =>
+            !!text && text.toLowerCase().includes(needle);
+
+        try {
+            const [siteDataRes, newsRes, classifiedsRes, storesRes] =
+                await Promise.all([
+                    fetch('/api/site-data'),
+                    fetch('/api/News'),
+                    supabase
+                        .from('classified_ads')
+                        .select('id, title, description, created_at')
+                        .eq('status', 'active'),
+                    // Stores were in the result-type union but never actually
+                    // searched, so store names returned nothing.
+                    supabase
+                        .from('stores')
+                        .select('id, name, description, location'),
+                ]);
+
+            const siteData = siteDataRes.ok ? await siteDataRes.json() : {};
+            const news: NewsItem[] = newsRes.ok ? await newsRes.json() : [];
+
+            const found: SearchResult[] = [];
+
+            for (const item of news) {
+                if (
+                    matches(item.title) ||
+                    matches(item.excerpt) ||
+                    matches(item.content)
+                ) {
+                    found.push({
+                        id: `news-${item.id}`,
+                        type: 'news',
+                        title: item.title,
+                        description: item.excerpt || item.source || '',
+                        // There is no /news route in this app, so the old
+                        // `/news/${id}` link always 404'd. Point at the
+                        // original article instead.
+                        externalLink: item.url,
+                        date: item.date,
+                    });
+                }
+            }
+
+            for (const row of (classifiedsRes.data ?? []) as ClassifiedRow[]) {
+                if (matches(row.title) || matches(row.description)) {
+                    found.push({
+                        id: `classified-${row.id}`,
+                        type: 'classified',
+                        title: row.title,
+                        description: row.description ?? '',
+                        link: `/classified/${row.id}`,
+                        date: row.created_at,
+                    });
+                }
+            }
+
+            for (const row of (storesRes.data ?? []) as StoreRow[]) {
+                if (
+                    matches(row.name) ||
+                    matches(row.description) ||
+                    matches(row.location)
+                ) {
+                    found.push({
+                        id: `store-${row.id}`,
+                        type: 'store',
+                        title: row.name,
+                        description: row.description ?? row.location ?? '',
+                        link: `/stores/${row.id}`,
+                    });
+                }
+            }
+
+            for (const [index, item] of (
+                (siteData.attractions ?? []) as Attraction[]
+            ).entries()) {
+                if (matches(item.name) || matches(item.description)) {
+                    found.push({
+                        id: `place-${index}`,
+                        type: 'place',
+                        title: item.name,
+                        description: item.description,
+                        // Was "/Places" — a 404 on any case-sensitive host,
+                        // which includes production.
+                        link: '/places',
+                    });
+                }
+            }
+
+            for (const [index, item] of (
+                (siteData.transportation ?? []) as Transport[]
+            ).entries()) {
+                if (matches(item.mode) || matches(item.details)) {
+                    found.push({
+                        id: `transport-${index}`,
+                        type: 'transport',
+                        title: item.mode,
+                        description: item.details,
+                        link: '/transport',
+                    });
+                }
+            }
+
+            for (const [index, item] of (
+                (siteData.emergencyContacts ?? []) as Contact[]
+            ).entries()) {
+                if (matches(item.label) || matches(item.number)) {
+                    found.push({
+                        id: `emergency-${index}`,
+                        type: 'emergency',
+                        title: item.label,
+                        description: item.number,
+                        link: '/emergency',
+                    });
+                }
+            }
+
+            for (const item of (siteData.socialPosts ?? []) as SocialPost[]) {
+                if (matches(item.user) || matches(item.content)) {
+                    found.push({
+                        id: `social-${item.id}`,
+                        type: 'social',
+                        title: `Post by ${item.user}`,
+                        description: item.content,
+                        link: '/social',
+                    });
+                }
+            }
+
+            setResults(found);
+        } catch (err) {
+            console.error('Search failed', err);
+            setResults([]);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
-        setSearchTerm(query);
+        setTerm(query);
         if (query) {
             performSearch(query);
         } else {
             setResults([]);
-            setHasSearched(false);
+            setSearched(false);
         }
-    }, [query]);
+    }, [query, performSearch]);
 
-    const performSearch = async (term: string) => {
-        if (!term.trim()) return;
-
-        setLoading(true);
-        setHasSearched(true);
-
-        try {
-            // Fetch all data in parallel
-            const [siteDataRes, newsRes, classifiedsRes] = await Promise.all([
-                fetch('/api/site-data'),
-                fetch('/api/News'),
-                supabase
-                    .from('classified_ads')
-                    .select('*')
-                    .eq('status', 'active')
-            ]);
-
-            const siteData = siteDataRes.ok ? await siteDataRes.json() : {};
-            const newsData: NewsItem[] = newsRes.ok ? await newsRes.json() : [];
-            const classifiedsData = classifiedsRes.data || [];
-
-            const searchResults: SearchResult[] = [];
-            const lowerTerm = term.toLowerCase();
-
-            // Helper to check text match
-            const matches = (text?: string | null) => text?.toLowerCase().includes(lowerTerm);
-
-            // 1. Search News
-            newsData.forEach(item => {
-                if (matches(item.title) || matches(item.excerpt) || matches(item.content)) {
-                    searchResults.push({
-                        id: `news-${item.id}`,
-                        type: 'news',
-                        title: item.title,
-                        description: item.excerpt || 'No summary available',
-                        link: `/news/${item.id}`, // Assuming news has individual pages, or just link to home/news section
-                        date: item.date
-                    });
-                }
-            });
-
-            // 2. Search Classifieds
-            classifiedsData.forEach((item: any) => {
-                if (matches(item.title) || matches(item.description)) {
-                    searchResults.push({
-                        id: `classified-${item.id}`,
-                        type: 'classified',
-                        title: item.title,
-                        description: item.description || 'No description',
-                        link: `/classified/${item.id}`,
-                        date: item.created_at
-                    });
-                }
-            });
-
-            // 3. Search Places (Attractions)
-            if (siteData.attractions) {
-                siteData.attractions.forEach((item: Attraction, index: number) => {
-                    if (matches(item.name) || matches(item.description)) {
-                        searchResults.push({
-                            id: `place-${index}`,
-                            type: 'place',
-                            title: item.name,
-                            description: item.description,
-                            link: '/Places'
-                        });
-                    }
-                });
-            }
-
-            // 4. Search Transport
-            if (siteData.transportation) {
-                siteData.transportation.forEach((item: Transport, index: number) => {
-                    if (matches(item.mode) || matches(item.details)) {
-                        searchResults.push({
-                            id: `transport-${index}`,
-                            type: 'transport',
-                            title: item.mode,
-                            description: item.details,
-                            link: '/transport'
-                        });
-                    }
-                });
-            }
-
-            // 5. Search Emergency
-            if (siteData.emergencyContacts) {
-                siteData.emergencyContacts.forEach((item: Contact, index: number) => {
-                    if (matches(item.label) || matches(item.number)) {
-                        searchResults.push({
-                            id: `emergency-${index}`,
-                            type: 'emergency',
-                            title: item.label,
-                            description: item.number,
-                            link: '/emergency'
-                        });
-                    }
-                });
-            }
-
-            // 6. Search Social
-            if (siteData.socialPosts) {
-                siteData.socialPosts.forEach((item: SocialPost) => {
-                    if (matches(item.user) || matches(item.content)) {
-                        searchResults.push({
-                            id: `social-${item.id}`,
-                            type: 'social',
-                            title: `Post by ${item.user}`,
-                            description: item.content,
-                            link: '/social'
-                        });
-                    }
-                });
-            }
-
-            setResults(searchResults);
-        } catch (error) {
-            console.error("Search failed", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleSearchSubmit = (e: React.FormEvent) => {
+    const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        router.push(`/search?q=${encodeURIComponent(searchTerm)}`);
+        const next = term.trim();
+        if (!next) return;
+        router.push(`/search?q=${encodeURIComponent(next)}`);
     };
+
+    const counts = results.reduce<Record<string, number>>((acc, r) => {
+        acc[r.type] = (acc[r.type] ?? 0) + 1;
+        return acc;
+    }, {});
+
+    const visible =
+        filter === 'all' ? results : results.filter((r) => r.type === filter);
 
     return (
-        <div className="min-h-screen flex flex-col">
-            <Header />
+        <div className="mx-auto w-full max-w-3xl pb-10">
+            <div className="page-x pt-5">
+                <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
+                    Search
+                </h1>
+                <p className="mt-1 text-sm text-muted">
+                    Places, events, listings, transport and more.
+                </p>
+            </div>
 
-            <main className="flex-1 px-8 py-10 max-w-4xl mx-auto w-full">
-                <div className="flex items-center gap-4 mb-8">
-                    <Link href="/" className="w-10 h-10 rounded-full bg-white/60 backdrop-blur-sm border border-white/40 flex items-center justify-center text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">
-                        <ArrowLeft size={20} />
-                    </Link>
-                    <div>
-                        <h1 className="text-3xl font-bold text-slate-800">Search Results</h1>
-                        <p className="text-sm text-slate-500 font-medium">Find what you're looking for</p>
-                    </div>
-                </div>
-
-                <div className="mb-10">
-                    <form onSubmit={handleSearchSubmit} className="relative">
-                        <input
-                            type="text"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Search for news, places, services..."
-                            className="w-full pl-14 pr-6 py-4 rounded-2xl bg-white/70 backdrop-blur-xl border border-white/40 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-lg transition-all placeholder:text-slate-400 text-slate-800"
-                        />
-                        <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400">
-                            <Search size={22} />
-                        </div>
+            <form onSubmit={submit} className="page-x mt-4">
+                <div className="relative">
+                    <SearchIcon
+                        size={18}
+                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faint"
+                    />
+                    <input
+                        type="search"
+                        inputMode="search"
+                        enterKeyHint="search"
+                        autoFocus
+                        value={term}
+                        onChange={(e) => setTerm(e.target.value)}
+                        placeholder="Search Kochi…"
+                        aria-label="Search"
+                        className="h-13 w-full rounded-xl border border-line bg-surface pl-12 pr-12 text-[16px] text-foreground placeholder:text-faint focus:border-primary focus:outline-none"
+                    />
+                    {term && (
                         <button
-                            type="submit"
-                            className="absolute right-3 top-1/2 -translate-y-1/2 bg-slate-800 text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-slate-900 transition-colors shadow-lg shadow-slate-200"
+                            type="button"
+                            onClick={() => {
+                                setTerm('');
+                                router.push('/search');
+                            }}
+                            aria-label="Clear search"
+                            className="press absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-muted hover:bg-surface-2"
                         >
-                            Search
+                            <X size={18} />
                         </button>
-                    </form>
+                    )}
                 </div>
+            </form>
 
-                {loading ? (
-                    <div className="flex justify-center py-12">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-800"></div>
-                    </div>
-                ) : hasSearched ? (
-                    <div className="space-y-4">
-                        {results.length > 0 ? (
-                            results.map((result) => (
-                                <GlassCard
-                                    key={result.id}
-                                    className="hover:shadow-lg transition-all duration-300 group"
+            {searched && !loading && results.length > 0 && (
+                <div className="mt-3">
+                    <ChipRow aria-label="Filter results by type">
+                        <Chip
+                            active={filter === 'all'}
+                            onClick={() => setFilter('all')}
+                        >
+                            All {results.length}
+                        </Chip>
+                        {(Object.keys(TYPE_META) as ResultType[])
+                            .filter((t) => counts[t])
+                            .map((t) => (
+                                <Chip
+                                    key={t}
+                                    active={filter === t}
+                                    onClick={() => setFilter(t)}
                                 >
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-1">
-                                            <span className={`inline-block px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider mb-2 border ${result.type === 'news' ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                                                result.type === 'place' ? 'bg-orange-50 text-orange-600 border-orange-100' :
-                                                    result.type === 'transport' ? 'bg-green-50 text-green-600 border-green-100' :
-                                                        result.type === 'emergency' ? 'bg-red-50 text-red-600 border-red-100' :
-                                                            result.type === 'classified' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                                                                'bg-slate-50 text-slate-600 border-slate-100'
-                                                }`}>
-                                                {result.type}
-                                            </span>
-                                            <h3 className="text-xl font-bold text-slate-800 mb-2 group-hover:text-blue-600 transition-colors">
-                                                {result.link ? (
-                                                    <Link href={result.link} className="flex items-center gap-2">
-                                                        {result.title}
-                                                    </Link>
-                                                ) : (
-                                                    result.title
-                                                )}
-                                            </h3>
-                                            <p className="text-slate-600 leading-relaxed text-sm mb-3">{result.description}</p>
-                                            {result.date && (
-                                                <div className="flex items-center text-xs text-slate-400 font-medium">
-                                                    <Calendar size={12} className="mr-1.5" />
-                                                    {new Date(result.date).toLocaleDateString()}
-                                                </div>
-                                            )}
-                                        </div>
-                                        {result.link && (
-                                            <Link href={result.link} className="ml-4 w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                                                <ArrowRight size={20} />
-                                            </Link>
-                                        )}
-                                    </div>
-                                </GlassCard>
-                            ))
-                        ) : (
-                            <div className="text-center py-12">
-                                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                                    <Search size={32} />
-                                </div>
-                                <p className="text-xl text-slate-800 font-bold mb-2">No results found for "{query}"</p>
-                                <p className="text-slate-500 text-sm">Try checking your spelling or using different keywords</p>
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    <div className="text-center py-20">
-                        <div className="w-20 h-20 bg-white/40 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300 border border-white/40">
-                            <Search size={40} />
+                                    {TYPE_META[t].label} {counts[t]}
+                                </Chip>
+                            ))}
+                    </ChipRow>
+                </div>
+            )}
+
+            <div className="page-x mt-5">
+                {loading ? (
+                    <>
+                        <LoadingAnnouncer label="Searching" />
+                        <div className="space-y-2.5">
+                            {Array.from({ length: 4 }).map((_, i) => (
+                                <Skeleton key={i} className="h-24 rounded-2xl" />
+                            ))}
                         </div>
-                        <p className="text-slate-400 text-lg font-medium">Enter a search term to get started</p>
-                    </div>
+                    </>
+                ) : !searched ? (
+                    <EmptyState
+                        icon={SearchIcon}
+                        title="What are you looking for?"
+                        description="Try “Fort Kochi”, “metro”, “bike” or “ambulance”."
+                    />
+                ) : visible.length === 0 ? (
+                    <EmptyState
+                        icon={SearchIcon}
+                        title={`No results for “${query}”`}
+                        description="Check the spelling, or try a broader word."
+                    />
+                ) : (
+                    <ul className="dk-stagger space-y-2.5">
+                        {visible.map((r, i) => (
+                            <ResultRow key={r.id} result={r} index={i} />
+                        ))}
+                    </ul>
                 )}
-            </main>
+            </div>
         </div>
+    );
+}
+
+function ResultRow({ result, index }: { result: SearchResult; index: number }) {
+    const meta = TYPE_META[result.type];
+    const Icon = meta.icon;
+
+    const body = (
+        <>
+            <span className="flex items-center gap-2">
+                <span
+                    className={`flex h-6 w-6 items-center justify-center rounded-md ${meta.bg} ${meta.fg}`}
+                >
+                    <Icon size={13} />
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wide text-faint">
+                    {meta.label}
+                </span>
+                {result.date && (
+                    <span className="text-[11px] text-faint">
+                        · {formatRelative(result.date)}
+                    </span>
+                )}
+            </span>
+            <span className="mt-1.5 block text-[16px] font-bold leading-snug text-foreground">
+                {result.title}
+            </span>
+            {result.description && (
+                <span className="mt-1 line-clamp-2 block text-[13px] leading-relaxed text-muted">
+                    {result.description}
+                </span>
+            )}
+        </>
+    );
+
+    const shell =
+        'press flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 shadow-e1 hover:border-line-strong hover:shadow-e2';
+
+    return (
+        <li style={{ '--dk-i': index } as React.CSSProperties}>
+            {result.externalLink ? (
+                <a
+                    href={result.externalLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={shell}
+                >
+                    <span className="min-w-0 flex-1">{body}</span>
+                    <ExternalLink
+                        size={17}
+                        className="mt-1 shrink-0 text-faint"
+                    />
+                </a>
+            ) : result.link ? (
+                <Link href={result.link} className={shell}>
+                    <span className="min-w-0 flex-1">{body}</span>
+                    <ArrowRight size={17} className="mt-1 shrink-0 text-faint" />
+                </Link>
+            ) : (
+                <div className={shell.replace('press ', '')}>
+                    <span className="min-w-0 flex-1">{body}</span>
+                </div>
+            )}
+        </li>
     );
 }
 
 export default function SearchPage() {
     return (
-        <div className="min-h-screen bg-slate-50/50">
-            <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading search...</div>}>
-                <SearchContent />
-            </Suspense>
-        </div>
+        <Suspense
+            fallback={
+                <div className="page-x mx-auto w-full max-w-3xl pt-6">
+                    <Skeleton className="h-13 rounded-xl" />
+                </div>
+            }
+        >
+            <SearchContent />
+        </Suspense>
     );
 }

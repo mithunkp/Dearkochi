@@ -1,4 +1,4 @@
-import { Sun, Cloud, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle } from 'lucide-react';
+import { Sun, Moon, Cloud, CloudMoon, CloudRain, CloudSnow, CloudLightning, CloudFog, CloudDrizzle } from 'lucide-react';
 
 export interface WeatherData {
     current: {
@@ -112,10 +112,22 @@ export function getWeatherDescription(code: number): string {
     return codes[code] || 'Unknown';
 }
 
+/** US AQI band, for labelling a raw number the reader can't interpret alone. */
+export function getAqiBand(aqi: number | null | undefined): {
+    label: string;
+    tone: 'success' | 'accent' | 'danger';
+} {
+    if (aqi == null || Number.isNaN(aqi)) return { label: '—', tone: 'success' };
+    if (aqi <= 50) return { label: 'Good', tone: 'success' };
+    if (aqi <= 100) return { label: 'Moderate', tone: 'accent' };
+    return { label: 'Unhealthy', tone: 'danger' };
+}
+
 export function getWeatherIcon(code: number, isDay: boolean = true) {
-    // Map codes to Lucide icons
-    if (code <= 1) return Sun;
-    if (code <= 3) return Cloud;
+    // Map codes to Lucide icons. `isDay` was previously accepted but ignored,
+    // so a clear night still rendered a sun.
+    if (code <= 1) return isDay ? Sun : Moon;
+    if (code <= 3) return isDay ? Cloud : CloudMoon;
     if (code <= 48) return CloudFog;
     if (code <= 55) return CloudDrizzle;
     if (code <= 67 || (code >= 80 && code <= 82)) return CloudRain;

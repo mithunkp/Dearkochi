@@ -1,3 +1,21 @@
+export interface LocalEvent {
+  id: string;
+  title: string;
+  description: string;
+  event_type: 'scheduled' | 'live';
+  location: string;
+  start_time: string;
+  end_time: string;
+  max_participants: number | null;
+  is_private: boolean;
+  is_closed: boolean;
+  creator_id: string;
+  /** Derived from event_participants, not a column. */
+  participant_count?: number;
+  requires_approval: boolean;
+  area: string | null;
+}
+
 export interface NewsItem {
   id: string;
   title: string;

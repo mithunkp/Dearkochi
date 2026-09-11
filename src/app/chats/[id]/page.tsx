@@ -1,11 +1,23 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from 'react';
+import { useCallback, useEffect, useRef, useState, use } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { UserDisplay } from '@/components/UserDisplay';
+import { ArrowLeft, Send, MessageCircle } from 'lucide-react';
+
+import { SafeImage } from '@/components/ui/SafeImage';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { ButtonLink } from '@/components/ui/Button';
+import { Notice } from '@/components/ui/Notice';
+import { formatPrice, formatTime, formatRelative } from '@/lib/format';
+
+type SenderProfile = {
+    nickname: string | null;
+    flair: string | null;
+    email: string | null;
+};
 
 type Message = {
     id: number;
@@ -14,11 +26,14 @@ type Message = {
     content: string;
     created_at: string;
     read_at: string | null;
-    profiles: {
-        nickname: string | null;
-        flair: string | null;
-        email: string;
-    };
+    profiles: SenderProfile | null;
+};
+
+type ChatProfile = {
+    full_name: string | null;
+    email: string | null;
+    nickname: string | null;
+    flair: string | null;
 };
 
 type Chat = {
@@ -32,112 +47,80 @@ type Chat = {
         price: number | null;
         image_url: string | null;
     } | null;
-    buyer_profile: {
-        full_name: string | null;
-        email: string | null;
-        nickname: string | null;
-        flair: string | null;
-    } | null;
-    seller_profile: {
-        full_name: string | null;
-        email: string | null;
-        nickname: string | null;
-        flair: string | null;
-    } | null;
+    buyer_profile: ChatProfile | null;
+    seller_profile: ChatProfile | null;
 };
 
-export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
+/** Group consecutive messages by calendar day for date separators. */
+function dayKey(iso: string) {
+    return new Date(iso).toDateString();
+}
+
+export default function ChatPage({
+    params,
+}: {
+    params: Promise<{ id: string }>;
+}) {
     const { id } = use(params);
-    const { user } = useAuth();
-    const router = useRouter();
+    const { user, loading: authLoading } = useAuth();
 
     const [chat, setChat] = useState<Chat | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
-    const [newMessage, setNewMessage] = useState('');
+    const [draft, setDraft] = useState('');
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (!user) {
-            router.push('/');
-            return;
-        }
-        fetchChat();
-        fetchMessages();
-        const unsubscribe = subscribeToMessages();
-        return () => {
-            unsubscribe();
-        };
-    }, [id, user]);
+    const endRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    const fetchChat = async () => {
+    const fetchChat = useCallback(async () => {
         try {
-            const { data, error } = await supabase
+            const { data, error: dbError } = await supabase
                 .from('chats')
-                .select(`
-                    *,
-                    classified_ads (
-                        title,
-                        price,
-                        image_url
-                    ),
-                    buyer_profile:profiles!chats_buyer_id_fkey (
-                        full_name,
-                        email,
-                        nickname,
-                        flair
-                    ),
-                    seller_profile:profiles!chats_seller_id_fkey (
-                        full_name,
-                        email,
-                        nickname,
-                        flair
-                    )
-                `)
+                .select(
+                    `*,
+                     classified_ads ( title, price, image_url ),
+                     buyer_profile:profiles!chats_buyer_id_fkey ( full_name, email, nickname, flair ),
+                     seller_profile:profiles!chats_seller_id_fkey ( full_name, email, nickname, flair )`,
+                )
                 .eq('id', id)
                 .single();
 
-            if (error) throw error;
+            if (dbError) throw dbError;
             setChat(data);
-        } catch (error) {
-            console.error('Error fetching chat:', error);
+        } catch (err) {
+            console.error('Error fetching chat:', err);
+            setChat(null);
         } finally {
             setLoading(false);
         }
-    };
+    }, [id]);
 
-    const fetchMessages = async () => {
+    const fetchMessages = useCallback(async () => {
         try {
-            const { data, error } = await supabase
+            const { data, error: dbError } = await supabase
                 .from('messages')
-                .select(`
-                    *,
-                    profiles:sender_id (
-                        nickname,
-                        flair,
-                        email
-                    )
-                `)
+                .select(`*, profiles:sender_id ( nickname, flair, email )`)
                 .eq('chat_id', id)
                 .order('created_at', { ascending: true });
 
-            if (error) throw error;
-            setMessages(data || []);
-        } catch (error) {
-            console.error('Error fetching messages:', error);
+            if (dbError) throw dbError;
+            setMessages((data ?? []) as Message[]);
+        } catch (err) {
+            console.error('Error fetching messages:', err);
         }
-    };
+    }, [id]);
 
-    const subscribeToMessages = () => {
+    useEffect(() => {
+        if (!user) return;
+        fetchChat();
+        fetchMessages();
+    }, [user, fetchChat, fetchMessages]);
+
+    // Live updates for incoming messages.
+    useEffect(() => {
+        if (!user) return;
+
         const channel = supabase
             .channel(`chat-${id}`)
             .on(
@@ -146,222 +129,260 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                     event: 'INSERT',
                     schema: 'public',
                     table: 'messages',
-                    filter: `chat_id=eq.${id}`
+                    filter: `chat_id=eq.${id}`,
                 },
                 async (payload) => {
-                    const newMessage = payload.new as any;
-                    // Fetch sender profile
+                    const row = payload.new as Message;
+
                     const { data: profile } = await supabase
                         .from('profiles')
                         .select('nickname, flair, email')
-                        .eq('id', newMessage.sender_id)
-                        .single();
+                        .eq('id', row.sender_id)
+                        .maybeSingle();
 
-                    const messageWithProfile: Message = {
-                        ...newMessage,
-                        profiles: profile || { nickname: null, flair: null, email: '' }
-                    };
-
-                    setMessages((prev) => {
-                        if (prev.some(m => m.id === messageWithProfile.id)) return prev;
-                        return [...prev, messageWithProfile];
-                    });
-                }
+                    setMessages((prev) =>
+                        prev.some((m) => m.id === row.id)
+                            ? prev
+                            : [
+                                ...prev,
+                                { ...row, profiles: profile ?? null },
+                            ],
+                    );
+                },
             )
             .subscribe();
 
         return () => {
             supabase.removeChannel(channel);
         };
-    };
+    }, [id, user]);
 
-    const handleSendMessage = async (e: React.FormEvent) => {
+    useEffect(() => {
+        endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    const sendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newMessage.trim() || !user || !chat) return;
+        const content = draft.trim();
+        if (!content || !user || !chat || sending) return;
 
         setSending(true);
+        setError(null);
         try {
-            const { data, error } = await supabase
+            const { data, error: dbError } = await supabase
                 .from('messages')
                 .insert({
-                    chat_id: parseInt(id),
-                    sender_id: user.uid, // Fixed: Use Firebase UID
-                    content: newMessage.trim()
+                    chat_id: Number.parseInt(id, 10),
+                    sender_id: user.uid,
+                    content,
                 })
-                .select(`
-                    *,
-                    profiles:sender_id (
-                        nickname,
-                        flair,
-                        email
-                    )
-                `)
+                .select(`*, profiles:sender_id ( nickname, flair, email )`)
                 .single();
 
-            if (error) throw error;
+            if (dbError) throw dbError;
 
-            setMessages((prev) => {
-                if (prev.some(m => m.id === data.id)) return prev;
-                return [...prev, data];
-            });
-            setNewMessage('');
-        } catch (error) {
-            console.error('Error sending message:', error);
-            alert('Failed to send message');
+            setMessages((prev) =>
+                prev.some((m) => m.id === data.id) ? prev : [...prev, data],
+            );
+            setDraft('');
+        } catch (err) {
+            console.error('Error sending message:', err);
+            setError('Message not sent. Check your connection and try again.');
         } finally {
             setSending(false);
         }
     };
 
-    if (loading) return <div className="p-8 text-center">Loading chat...</div>;
-    if (!chat) return <div className="p-8 text-center">Chat not found</div>;
+    if (authLoading || (loading && user)) {
+        return (
+            <div className="mx-auto w-full max-w-2xl space-y-3 p-4">
+                <Skeleton className="h-14 rounded-2xl" />
+                <Skeleton className="h-24 rounded-2xl" />
+                <Skeleton className="h-16 rounded-2xl" />
+            </div>
+        );
+    }
 
-    const otherUser = user?.uid === chat.buyer_id ? chat.seller_profile : chat.buyer_profile;
-    const otherUserName = otherUser?.full_name || otherUser?.email?.split('@')[0] || 'User';
+    // Previously this redirected to "/" whenever `user` was falsy, including
+    // while Firebase was still resolving the session.
+    if (!user) {
+        return (
+            <div className="mx-auto w-full max-w-md p-4 pt-10">
+                <EmptyState
+                    icon={MessageCircle}
+                    title="You're not signed in"
+                    description="Sign in to view this conversation."
+                    action={
+                        <ButtonLink href={`/login?redirect=/chats/${id}`}>
+                            Sign in
+                        </ButtonLink>
+                    }
+                />
+            </div>
+        );
+    }
+
+    if (!chat) {
+        return (
+            <div className="mx-auto w-full max-w-md p-4 pt-10">
+                <EmptyState
+                    icon={MessageCircle}
+                    title="Conversation not found"
+                    description="This chat may have been removed."
+                    action={<ButtonLink href="/chats">Back to messages</ButtonLink>}
+                />
+            </div>
+        );
+    }
+
+    const isBuyer = user.uid === chat.buyer_id;
+    const other = isBuyer ? chat.seller_profile : chat.buyer_profile;
+    const otherName = other?.nickname || 'Dear Kochi user';
+    const price = formatPrice(chat.classified_ads?.price ?? null);
+
+    let lastDay = '';
 
     return (
-        <div className="max-w-4xl mx-auto h-screen flex flex-col">
-            {/* Header */}
-            <div className="bg-white/80 backdrop-blur-md border-b border-slate-200 p-4 sticky top-0 z-10 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-4">
-                    <Link href="/chats" className="text-slate-500 hover:text-slate-800 transition-colors p-2 -ml-2 rounded-full hover:bg-slate-100">
-                        ←
+        // dvh, not vh: the composer must stay above the mobile browser bar.
+        <div className="flex h-dvh flex-col bg-background">
+            <header className="flex shrink-0 items-center gap-3 border-b border-line bg-surface/90 px-3 pt-safe backdrop-blur-xl">
+                <div className="flex h-14 w-full items-center gap-3">
+                    <Link
+                        href="/chats"
+                        aria-label="Back to messages"
+                        className="press tap -ml-1 flex items-center justify-center rounded-full text-foreground hover:bg-surface-2"
+                    >
+                        <ArrowLeft size={21} />
                     </Link>
 
-                    <div className="flex items-center gap-3">
-                        <div className="relative">
-                            {chat.classified_ads?.image_url ? (
-                                <img
-                                    src={chat.classified_ads.image_url}
-                                    alt={chat.classified_ads.title}
-                                    className="w-10 h-10 object-cover rounded-full border border-slate-200"
-                                />
-                            ) : (
-                                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200">
-                                    <span className="text-xl">📦</span>
-                                </div>
+                    <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-surface-2">
+                        <SafeImage
+                            src={chat.classified_ads?.image_url}
+                            alt=""
+                            sizes="40px"
+                        />
+                    </span>
+
+                    <div className="min-w-0 flex-1">
+                        <h1 className="flex items-center gap-1.5 truncate text-[15px] font-bold text-foreground">
+                            {otherName}
+                            {other?.flair && (
+                                <span className="text-sm">{other.flair}</span>
                             )}
-                            <div className="absolute -bottom-1 -right-1">
-                                <UserDisplay
-                                    nickname={otherUser?.nickname}
-                                    flair={otherUser?.flair}
-                                    email={otherUser?.email}
-                                    fallback=""
-                                    className="scale-75 origin-bottom-right"
-                                    showFlair={false}
-                                    hideName={true} // Just user avatar if possible, or we rely on the main avatar
-                                />
-                                {/* Actually UserDisplay doesn't support hideName, so let's just show standard info */}
-                            </div>
-                        </div>
-
-                        <div>
-                            <h1 className="font-bold text-slate-800 flex items-center gap-2">
-                                {otherUser?.nickname || otherUser?.full_name || 'User'}
-                                {otherUser?.flair && <span className="text-sm">{otherUser.flair}</span>}
-                            </h1>
-                            <p className="text-xs text-slate-500 flex items-center gap-1">
-                                regarding <span className="font-medium text-slate-700 truncate max-w-[150px]">{chat.classified_ads?.title}</span>
-                                {chat.classified_ads?.price && <span className="font-semibold text-green-600">• ₹{chat.classified_ads.price}</span>}
-                            </p>
-                        </div>
+                        </h1>
+                        <p className="truncate text-[11px] text-muted">
+                            {chat.classified_ads?.title ?? 'Listing removed'}
+                            {price && ` · ${price}`}
+                        </p>
                     </div>
-                </div>
-            </div >
 
-            {/* Messages */}
-            < div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-4" >
-                {
-                    messages.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center text-slate-400 opacity-60">
-                            <div className="text-6xl mb-4">💬</div>
-                            <p>No messages yet.</p>
-                            <p className="text-sm">Start the conversation below!</p>
-                        </div>
-                    ) : (
-                        messages.map((message, index) => {
-                            const isOwn = message.sender_id === user?.uid;
-                            const showAvatar = !isOwn && (index === 0 || messages[index - 1].sender_id !== message.sender_id);
+                    {chat.ad_id && (
+                        <Link
+                            href={`/classified/${chat.ad_id}`}
+                            className="press shrink-0 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12px] font-semibold text-foreground"
+                        >
+                            View ad
+                        </Link>
+                    )}
+                </div>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
+                {messages.length === 0 ? (
+                    <div className="flex h-full flex-col items-center justify-center text-center">
+                        <span className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-surface-2 text-faint">
+                            <MessageCircle size={24} />
+                        </span>
+                        <p className="text-sm font-semibold text-foreground">
+                            No messages yet
+                        </p>
+                        <p className="mt-1 text-xs text-muted">
+                            Say hello to get the conversation started.
+                        </p>
+                    </div>
+                ) : (
+                    <ul className="mx-auto flex max-w-2xl flex-col gap-1.5">
+                        {messages.map((m) => {
+                            const mine = m.sender_id === user.uid;
+                            const key = dayKey(m.created_at);
+                            const showDay = key !== lastDay;
+                            lastDay = key;
 
                             return (
-                                <div
-                                    key={message.id}
-                                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group mb-1`}
-                                >
-                                    <div className={`flex max-w-[85%] md:max-w-[70%] ${isOwn ? 'flex-row-reverse' : 'flex-row'} items-end gap-2`}>
-
-                                        {/* Avatar placeholder for spacing if not own */}
-                                        {!isOwn && (
-                                            <div className="w-8 flex-shrink-0">
-                                                {showAvatar && (
-                                                    <div className="w-8 h-8 rounded-full overflow-hidden bg-white border border-slate-100 shadow-sm flex items-center justify-center text-xs">
-                                                        {message.profiles?.nickname?.[0] || '?'}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
+                                <li key={m.id}>
+                                    {showDay && (
+                                        <p className="my-3 text-center text-[11px] font-semibold text-faint">
+                                            {formatRelative(m.created_at)}
+                                        </p>
+                                    )}
+                                    <div
+                                        className={`flex ${mine ? 'justify-end' : 'justify-start'}`}
+                                    >
                                         <div
-                                            className={`px-4 py-3 shadow-sm relative text-sm leading-relaxed ${isOwn
-                                                ? 'bg-gradient-to-br from-pink-500 to-rose-500 text-white rounded-2xl rounded-tr-sm'
-                                                : 'bg-white text-slate-800 border border-slate-100 rounded-2xl rounded-tl-sm'
+                                            className={`max-w-[78%] rounded-2xl px-3.5 py-2 ${mine
+                                                    ? 'rounded-br-md bg-primary text-primary-foreground'
+                                                    : 'rounded-bl-md border border-line bg-surface text-foreground'
                                                 }`}
                                         >
-                                            <p className="whitespace-pre-wrap">{message.content}</p>
-
+                                            <p className="whitespace-pre-wrap break-words text-[15px] leading-snug">
+                                                {m.content}
+                                            </p>
                                             <p
-                                                className={`text-[10px] mt-1 text-right opacity-70 ${isOwn ? 'text-pink-100' : 'text-slate-400'
+                                                className={`mt-0.5 text-right text-[10px] ${mine
+                                                        ? 'text-primary-foreground/70'
+                                                        : 'text-faint'
                                                     }`}
                                             >
-                                                {new Date(message.created_at).toLocaleTimeString([], {
-                                                    hour: '2-digit',
-                                                    minute: '2-digit'
-                                                })}
+                                                {formatTime(m.created_at)}
                                             </p>
                                         </div>
                                     </div>
-                                </div>
+                                </li>
                             );
-                        })
-                    )
-                }
-                < div ref={messagesEndRef} />
-            </div >
+                        })}
+                    </ul>
+                )}
+                <div ref={endRef} />
+            </div>
 
-            {/* Message Input */}
-            < div className="bg-white/80 backdrop-blur-md border-t border-slate-200 p-4" >
-                <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex gap-3 items-end">
-                    <div className="flex-1 bg-slate-100 rounded-2xl flex items-center p-1 border border-transparent focus-within:border-pink-300 focus-within:ring-2 focus-within:ring-pink-100 transition-all">
-                        <textarea
-                            value={newMessage}
-                            onChange={(e) => setNewMessage(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleSendMessage(e);
-                                }
-                            }}
-                            placeholder="Type a message..."
-                            className="w-full bg-transparent border-none focus:ring-0 px-4 py-2 min-h-[44px] max-h-32 resize-none text-slate-700 placeholder-slate-400 text-sm"
-                            disabled={sending}
-                            rows={1}
-                        />
-                    </div>
+            {error && (
+                <div className="px-3 pb-2">
+                    <Notice tone="error">{error}</Notice>
+                </div>
+            )}
+
+            <form
+                onSubmit={sendMessage}
+                className="shrink-0 border-t border-line bg-surface/95 px-3 py-2.5 pb-safe backdrop-blur-xl"
+            >
+                <div className="mx-auto flex max-w-2xl items-end gap-2">
+                    <textarea
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                            // Enter sends on a physical keyboard; Shift+Enter
+                            // makes a new line. Touch keyboards send a plain
+                            // newline, which the textarea keeps.
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                sendMessage(e);
+                            }
+                        }}
+                        rows={1}
+                        placeholder="Message…"
+                        aria-label="Message"
+                        className="max-h-32 min-h-11 w-full flex-1 resize-none rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-[16px] text-foreground placeholder:text-faint focus:border-primary focus:outline-none"
+                    />
                     <button
                         type="submit"
-                        disabled={sending || !newMessage.trim()}
-                        className="bg-gradient-to-r from-pink-500 to-rose-500 text-white w-12 h-12 rounded-full flex items-center justify-center hover:shadow-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-pink-200"
+                        disabled={!draft.trim() || sending}
+                        aria-label="Send message"
+                        className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
                     >
-                        {sending ? (
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        ) : (
-                            <svg className="w-5 h-5 translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                            </svg>
-                        )}
+                        <Send size={18} />
                     </button>
-                </form>
-            </div>
+                </div>
+            </form>
         </div>
     );
 }

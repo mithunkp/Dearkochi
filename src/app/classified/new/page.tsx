@@ -1,21 +1,38 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import { Phone, Mail } from 'lucide-react';
 import ImageUpload from '@/components/ImageUpload';
+import { Field, TextInput, TextArea, Select } from '@/components/ui/Field';
+import { Button } from '@/components/ui/Button';
+import { Notice } from '@/components/ui/Notice';
+import { Skeleton } from '@/components/ui/Skeleton';
 
-type Category = {
-    id: number;
-    name: string;
-};
+type Category = { id: number; name: string };
+
+const AD_TYPES = [
+    { value: 'sale', label: 'For sale' },
+    { value: 'rent', label: 'For rent' },
+    { value: 'service', label: 'Service' },
+];
+
+const PRICE_UNITS = [
+    { value: 'item', label: 'Per item' },
+    { value: 'hour', label: 'Per hour' },
+    { value: 'day', label: 'Per day' },
+    { value: 'month', label: 'Per month' },
+    { value: 'job', label: 'Per job' },
+];
 
 export default function NewAdPage() {
     const { user, loading: authLoading } = useAuth();
     const router = useRouter();
+
     const [categories, setCategories] = useState<Category[]>([]);
-    const [formData, setFormData] = useState({
+    const [form, setForm] = useState({
         title: '',
         description: '',
         price: '',
@@ -26,204 +43,278 @@ export default function NewAdPage() {
         mobile: '',
         contact_email: '',
     });
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
+    // Send unauthenticated visitors to sign-in and bring them back here.
+    // The old code pushed them to /profile, which just showed a sign-in
+    // prompt with no way back to the form.
     useEffect(() => {
         if (!authLoading && !user) {
-            router.push('/profile');
+            router.replace('/login?redirect=/classified/new');
         }
-        fetchCategories();
-    }, [user, authLoading, router]);
+    }, [authLoading, user, router]);
 
-    const fetchCategories = async () => {
-        const { data, error } = await supabase
+    const fetchCategories = useCallback(async () => {
+        const { data, error: dbError } = await supabase
             .from('classified_categories')
             .select('id, name')
             .order('name');
-
-        if (error) {
-            console.error('Error fetching categories:', error);
-        } else {
-            setCategories(data || []);
+        if (dbError) {
+            console.error('Error fetching categories:', dbError);
+            return;
         }
-    };
+        setCategories(data ?? []);
+    }, []);
+
+    useEffect(() => {
+        fetchCategories();
+    }, [fetchCategories]);
+
+    const set = <K extends keyof typeof form>(key: K, value: string) =>
+        setForm((prev) => ({ ...prev, [key]: value }));
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
+        if (!user || submitting) return;
 
-        setLoading(true);
-        setError('');
+        setSubmitting(true);
+        setError(null);
 
         try {
-            const { error } = await supabase
+            const { error: dbError } = await supabase
                 .from('classified_ads')
                 .insert({
-                    ...formData,
-                    price: formData.price ? parseFloat(formData.price) : null,
-                    category_id: formData.category_id ? parseInt(formData.category_id) : null,
+                    ...form,
+                    price: form.price ? Number.parseFloat(form.price) : null,
+                    category_id: form.category_id
+                        ? Number.parseInt(form.category_id, 10)
+                        : null,
                     user_id: user.uid,
                 });
 
-            if (error) throw error;
-
+            if (dbError) throw dbError;
             router.push('/classified');
         } catch (err) {
+            // Postgres messages name columns and constraints; keep them in
+            // the console rather than on screen.
             console.error('Error creating ad:', err);
-            setError(err instanceof Error ? err.message : 'Failed to create ad');
+            setError('Could not post your ad. Please check the form and try again.');
         } finally {
-            setLoading(false);
+            setSubmitting(false);
         }
     };
 
-    if (authLoading) return <div className="p-8 text-center">Loading...</div>;
+    if (authLoading || !user) {
+        return (
+            <div className="page-x mx-auto w-full max-w-2xl space-y-3 pt-6">
+                <Skeleton className="h-12 rounded-xl" />
+                <Skeleton className="h-64 rounded-2xl" />
+            </div>
+        );
+    }
 
     return (
-        <div className="max-w-2xl mx-auto p-6">
-            <h1 className="text-3xl font-bold mb-8">Post a New Ad</h1>
+        <div className="mx-auto w-full max-w-2xl pb-10">
+            <div className="page-x pt-5">
+                <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
+                    Post an ad
+                </h1>
+                <p className="mt-1 text-sm text-muted">
+                    Reach people looking to buy, rent or hire in Kochi.
+                </p>
+            </div>
 
-            <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border p-6 space-y-6">
-                {error && (
-                    <div className="bg-red-50 text-red-600 p-4 rounded-md text-sm">
-                        {error}
-                    </div>
-                )}
+            <form onSubmit={handleSubmit} className="page-x mt-5">
+                <div className="space-y-4 rounded-2xl border border-line bg-surface p-4 shadow-e1">
+                    {error && <Notice tone="error">{error}</Notice>}
 
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-                    <input
-                        type="text"
-                        required
-                        value={formData.title}
-                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="What are you selling or offering?"
-                    />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                        <select
-                            value={formData.ad_type}
-                            onChange={(e) => setFormData({ ...formData, ad_type: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                        >
-                            <option value="sale">For Sale</option>
-                            <option value="rent">For Rent</option>
-                            <option value="service">Service</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                        <select
-                            value={formData.category_id}
-                            onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                        >
-                            <option value="">Select Category</option>
-                            {categories.map((cat) => (
-                                <option key={cat.id} value={cat.id}>
-                                    {cat.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Price (₹)</label>
-                        <input
-                            type="number"
-                            value={formData.price}
-                            onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="0.00"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
-                        <select
-                            value={formData.price_unit}
-                            onChange={(e) => setFormData({ ...formData, price_unit: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                        >
-                            <option value="item">Per Item</option>
-                            <option value="hour">Per Hour</option>
-                            <option value="day">Per Day</option>
-                            <option value="month">Per Month</option>
-                            <option value="job">Per Job</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                    <textarea
-                        rows={4}
-                        value={formData.description}
-                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Describe your item or service..."
-                    />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Number (Optional)</label>
-                        <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-gray-500 text-sm">📞</span>
-                            <input
-                                type="tel"
-                                value={formData.mobile}
-                                onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                placeholder="+91 98765 43210"
+                    <Field label="Title" required>
+                        {(id) => (
+                            <TextInput
+                                id={id}
+                                required
+                                maxLength={120}
+                                value={form.title}
+                                onChange={(e) => set('title', e.target.value)}
+                                placeholder="What are you offering?"
                             />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email (Optional)</label>
-                        <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-gray-500 text-sm">✉️</span>
-                            <input
-                                type="email"
-                                value={formData.contact_email}
-                                onChange={(e) => setFormData({ ...formData, contact_email: e.target.value })}
-                                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                placeholder="contact@example.com"
-                            />
-                        </div>
-                    </div>
-                </div>
+                        )}
+                    </Field>
 
-                <div>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <Field label="Type">
+                            {(id) => (
+                                <Select
+                                    id={id}
+                                    value={form.ad_type}
+                                    onChange={(e) =>
+                                        set('ad_type', e.target.value)
+                                    }
+                                >
+                                    {AD_TYPES.map((t) => (
+                                        <option key={t.value} value={t.value}>
+                                            {t.label}
+                                        </option>
+                                    ))}
+                                </Select>
+                            )}
+                        </Field>
+
+                        <Field label="Category">
+                            {(id) => (
+                                <Select
+                                    id={id}
+                                    value={form.category_id}
+                                    onChange={(e) =>
+                                        set('category_id', e.target.value)
+                                    }
+                                >
+                                    <option value="">Choose a category</option>
+                                    {categories.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name}
+                                        </option>
+                                    ))}
+                                </Select>
+                            )}
+                        </Field>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <Field
+                            label="Price"
+                            hint="Leave blank to show “Contact”."
+                        >
+                            {(id) => (
+                                <TextInput
+                                    id={id}
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={0}
+                                    step="1"
+                                    value={form.price}
+                                    onChange={(e) =>
+                                        set('price', e.target.value)
+                                    }
+                                    placeholder="₹"
+                                />
+                            )}
+                        </Field>
+
+                        <Field label="Unit">
+                            {(id) => (
+                                <Select
+                                    id={id}
+                                    value={form.price_unit}
+                                    onChange={(e) =>
+                                        set('price_unit', e.target.value)
+                                    }
+                                >
+                                    {PRICE_UNITS.map((u) => (
+                                        <option key={u.value} value={u.value}>
+                                            {u.label}
+                                        </option>
+                                    ))}
+                                </Select>
+                            )}
+                        </Field>
+                    </div>
+
+                    <Field label="Description">
+                        {(id) => (
+                            <TextArea
+                                id={id}
+                                rows={4}
+                                maxLength={1000}
+                                value={form.description}
+                                onChange={(e) =>
+                                    set('description', e.target.value)
+                                }
+                                placeholder="Condition, age, what's included…"
+                            />
+                        )}
+                    </Field>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <Field label="Mobile" hint="Optional">
+                            {(id) => (
+                                <div className="relative">
+                                    <Phone
+                                        size={16}
+                                        className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-faint"
+                                    />
+                                    <TextInput
+                                        id={id}
+                                        type="tel"
+                                        inputMode="tel"
+                                        autoComplete="tel"
+                                        value={form.mobile}
+                                        onChange={(e) =>
+                                            set('mobile', e.target.value)
+                                        }
+                                        placeholder="+91 98765 43210"
+                                        className="pl-10"
+                                    />
+                                </div>
+                            )}
+                        </Field>
+
+                        <Field label="Email" hint="Optional">
+                            {(id) => (
+                                <div className="relative">
+                                    <Mail
+                                        size={16}
+                                        className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-faint"
+                                    />
+                                    <TextInput
+                                        id={id}
+                                        type="email"
+                                        inputMode="email"
+                                        autoComplete="email"
+                                        value={form.contact_email}
+                                        onChange={(e) =>
+                                            set('contact_email', e.target.value)
+                                        }
+                                        placeholder="you@example.com"
+                                        className="pl-10"
+                                    />
+                                </div>
+                            )}
+                        </Field>
+                    </div>
+
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Ad Image</label>
+                        <span className="mb-1.5 block text-[13px] font-semibold text-foreground">
+                            Photo
+                        </span>
                         <ImageUpload
-                            value={formData.image_url}
-                            onChange={(url) => setFormData({ ...formData, image_url: url })}
+                            value={form.image_url}
+                            onChange={(url) => set('image_url', url)}
                         />
-                        <p className="text-xs text-gray-500 mt-2">Upload a photo of your item (optional)</p>
-                    </div>        </div>
+                        <p className="mt-1.5 text-xs text-faint">
+                            Listings with a photo get far more responses.
+                        </p>
+                    </div>
+                </div>
 
-                <div className="flex justify-end gap-3 pt-4">
-                    <button
+                <div className="mt-4 flex gap-2">
+                    <Button
                         type="button"
+                        variant="secondary"
+                        block
                         onClick={() => router.back()}
-                        className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
                     >
                         Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         type="submit"
-                        disabled={loading}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                        block
+                        loading={submitting}
+                        disabled={!form.title.trim()}
                     >
-                        {loading ? 'Posting...' : 'Post Ad'}
-                    </button>
+                        Post ad
+                    </Button>
                 </div>
             </form>
         </div>

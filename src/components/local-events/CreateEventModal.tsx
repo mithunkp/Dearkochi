@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { Notice } from '@/components/ui/Notice';
 import { useAuth } from '@/lib/auth-context';
 import { X, Zap, Calendar, Lock, Globe, MapPin, Users, Clock } from 'lucide-react';
 
@@ -39,25 +40,38 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
         longitude: null as number | null,
         requiresApproval: false
     });
+    const [formError, setFormError] = useState<string | null>(null);
+    // Replaces window.prompt() for the missing-nickname case.
+    const [needsNickname, setNeedsNickname] = useState(false);
+    const [nicknameDraft, setNicknameDraft] = useState('');
+
+    /*
+     * Reset in an effect, not during render. The previous version called
+     * setFormData() straight from the render body whenever the modal was
+     * closed, which React treats as a state update during render.
+     */
+    useEffect(() => {
+        if (isOpen) return;
+        setFormData({
+            title: '',
+            description: '',
+            location: '',
+            maxParticipants: '',
+            isPrivate: false,
+            scheduledDate: '',
+            scheduledTime: '',
+            durationHours: '2',
+            latitude: null,
+            longitude: null,
+            requiresApproval: false
+        });
+        setEventType('live');
+        setFormError(null);
+        setNeedsNickname(false);
+        setNicknameDraft('');
+    }, [isOpen]);
 
     if (!isOpen) {
-        // Reset form when closing
-        if (formData.title || formData.description) {
-            setFormData({
-                title: '',
-                description: '',
-                location: '',
-                maxParticipants: '',
-                isPrivate: false,
-                scheduledDate: '',
-                scheduledTime: '',
-                durationHours: '2',
-                latitude: null,
-                longitude: null,
-                requiresApproval: false
-            });
-            setEventType('live');
-        }
         return null;
     }
 
@@ -65,25 +79,37 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
         e.preventDefault();
         console.log('Form submitted', { formData, user });
 
+        setFormError(null);
+
         if (!user) {
-            console.error('No user found');
-            alert('You must be logged in to create an event');
+            setFormError('Please sign in to create an event.');
             return;
         }
 
-        // Check for nickname first
-        const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.uid).single();
+        // A nickname is what other attendees see, so it must exist first.
+        // maybeSingle: a brand-new account simply has no profile row yet.
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('nickname')
+            .eq('id', user.uid)
+            .maybeSingle();
+
         if (!profile?.nickname) {
-            const nick = prompt('Please set a nickname before creating an event:');
-            if (!nick || !nick.trim()) {
-                alert('A nickname is required to create events');
+            const nick = nicknameDraft.trim();
+            if (!nick) {
+                setNeedsNickname(true);
+                setFormError('Choose a nickname before creating an event.');
                 return;
             }
-            const { error: updateError } = await supabase.from('profiles').update({ nickname: nick.trim() }).eq('id', user.uid);
+            const { error: updateError } = await supabase
+                .from('profiles')
+                .upsert({ id: user.uid, email: user.email, nickname: nick });
             if (updateError) {
-                alert('Failed to set nickname. Please try again.');
+                console.error('Failed to set nickname:', updateError);
+                setFormError('Could not save that nickname. Try another.');
                 return;
             }
+            setNeedsNickname(false);
         }
 
         // Validate required fields
@@ -95,19 +121,19 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
 
         const missingField = requiredFields.find(field => !formData[field.field as keyof typeof formData]?.toString().trim());
         if (missingField) {
-            alert(`Please fill in the ${missingField.label} field`);
+            setFormError(`Please fill in ${missingField.label}.`);
             return;
         }
 
         // For live events, ensure location is set
         if (eventType === 'live' && (!formData.latitude || !formData.longitude)) {
-            alert('Please select a location on the map for live events');
+            setFormError('Pick a location on the map for live events.');
             return;
         }
 
         // For scheduled events, ensure date and time are set
         if (eventType === 'scheduled' && (!formData.scheduledDate || !formData.scheduledTime)) {
-            alert('Please select both date and time for scheduled events');
+            setFormError('Choose both a date and a time.');
             return;
         }
 
@@ -168,7 +194,7 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
             onClose();
         } catch (error) {
             console.error('Error creating event:', error);
-            alert(`Failed to create event: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            setFormError('Could not create this event. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -185,6 +211,31 @@ export function CreateEventModal({ isOpen, onClose, onCreated }: CreateEventModa
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+
+                    {formError && <Notice tone="error">{formError}</Notice>}
+
+                    {needsNickname && (
+                        <div>
+                            <label
+                                htmlFor="event-nickname"
+                                className="mb-1.5 block text-sm font-medium text-slate-700"
+                            >
+                                Choose a nickname
+                            </label>
+                            <input
+                                id="event-nickname"
+                                type="text"
+                                value={nicknameDraft}
+                                onChange={(e) => setNicknameDraft(e.target.value)}
+                                maxLength={30}
+                                placeholder="What should people call you?"
+                                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-base focus:border-purple-500 focus:outline-none"
+                            />
+                            <p className="mt-1.5 text-xs text-slate-500">
+                                Shown to everyone who joins your events.
+                            </p>
+                        </div>
+                    )}
 
                     {/* Event Type Toggle */}
                     <div className="flex p-1 bg-slate-100 rounded-xl">

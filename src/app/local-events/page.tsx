@@ -1,257 +1,292 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
-import { Plus, Calendar, Zap, MessageCircle, Settings, User as UserIcon, Menu, X } from 'lucide-react';
+import { Plus, CalendarDays, Zap, User as UserIcon, LayoutGrid } from 'lucide-react';
+import type { LocalEvent } from '@/app/types';
 import { EventCard } from '@/components/local-events/EventCard';
 import { CreateEventModal } from '@/components/local-events/CreateEventModal';
 import { EventDetailsModal } from '@/components/local-events/EventDetailsModal';
+import { Chip, ChipRow } from '@/components/ui/Chip';
+import { EmptyState, ErrorState } from '@/components/ui/EmptyState';
+import { SkeletonCard, LoadingAnnouncer } from '@/components/ui/Skeleton';
+import { Sheet } from '@/components/ui/Sheet';
+import { Button } from '@/components/ui/Button';
 
-export type LocalEvent = {
-    id: string;
-    title: string;
-    description: string;
-    event_type: 'scheduled' | 'live';
-    location: string;
-    start_time: string;
-    end_time: string;
-    max_participants: number | null;
-    is_private: boolean;
-    is_closed: boolean;
-    creator_id: string;
-    area: string | null;
-    participant_count?: number; // Calculated field
-    requires_approval: boolean;
-};
+type Filter = 'all' | 'live' | 'scheduled' | 'my-events';
+
+const FILTERS: { id: Filter; label: string; icon: typeof LayoutGrid }[] = [
+    { id: 'all', label: 'Discover', icon: LayoutGrid },
+    { id: 'live', label: 'Live now', icon: Zap },
+    { id: 'scheduled', label: 'Scheduled', icon: CalendarDays },
+    { id: 'my-events', label: 'My events', icon: UserIcon },
+];
 
 export default function LocalEventsPage() {
     const router = useRouter();
-    const { user, loading } = useAuth();
+    const { user, loading: authLoading } = useAuth();
+
     const [events, setEvents] = useState<LocalEvent[]>([]);
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [selectedEvent, setSelectedEvent] = useState<LocalEvent | null>(null);
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const [filter, setFilter] = useState<'all' | 'live' | 'scheduled' | 'my-events'>('all');
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [filter, setFilter] = useState<Filter>('all');
+    const [createOpen, setCreateOpen] = useState(false);
+    const [selected, setSelected] = useState<LocalEvent | null>(null);
+    const [pendingDelete, setPendingDelete] = useState<LocalEvent | null>(null);
+    const [deleting, setDeleting] = useState(false);
+
+    const fetchEvents = useCallback(async () => {
+        setError(null);
+        try {
+            const { data, error: eventsError } = await supabase
+                .from('local_events')
+                .select('*')
+                .gt('end_time', new Date().toISOString())
+                .order('start_time', { ascending: true });
+
+            if (eventsError) throw eventsError;
+
+            const rows = (data ?? []) as LocalEvent[];
+
+            // One query for every participant row, counted in memory.
+            // Previously this issued a separate count query per event, so a
+            // page of 30 events meant 31 round trips.
+            const ids = rows.map((e) => e.id);
+            const counts = new Map<string, number>();
+
+            if (ids.length > 0) {
+                const { data: parts, error: partsError } = await supabase
+                    .from('event_participants')
+                    .select('event_id')
+                    .eq('status', 'joined')
+                    .in('event_id', ids);
+
+                if (partsError) throw partsError;
+
+                for (const row of (parts ?? []) as { event_id: string }[]) {
+                    counts.set(row.event_id, (counts.get(row.event_id) ?? 0) + 1);
+                }
+            }
+
+            setEvents(
+                rows.map((e) => ({
+                    ...e,
+                    participant_count: counts.get(e.id) ?? 0,
+                })),
+            );
+        } catch (err) {
+            console.error('Failed to load events:', err);
+            setError('We could not load events just now.');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // Redirect unauthenticated visitors once auth has actually resolved.
+    useEffect(() => {
+        if (!authLoading && !user) {
+            router.push('/login?redirect=/local-events');
+        }
+    }, [authLoading, user, router]);
 
     useEffect(() => {
-        // Check authentication
-        if (!loading && !user) {
-            router.push('/login?redirect=/local-events');
-            return;
-        }
+        if (!user) return;
+        fetchEvents();
+    }, [user, fetchEvents]);
 
-        if (user) {
-            fetchEvents();
-        }
-
+    // Subscribe once per signed-in user, not on every router change.
+    useEffect(() => {
+        if (!user) return;
         const channel = supabase
             .channel('local_events_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'local_events' }, () => {
-                fetchEvents();
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, () => {
-                fetchEvents(); // Refresh when participants change
-            })
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'local_events' },
+                () => fetchEvents(),
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'event_participants' },
+                () => fetchEvents(),
+            )
             .subscribe();
 
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [user, router]);
+    }, [user, fetchEvents]);
 
-    const fetchEvents = async () => {
-        const now = new Date().toISOString();
-        const { data, error } = await supabase
+    const confirmDelete = async () => {
+        if (!pendingDelete) return;
+        setDeleting(true);
+        const { error: deleteError } = await supabase
             .from('local_events')
-            .select('*')
-            .gt('end_time', now) // Only fetch active events
-            .order('start_time', { ascending: true });
+            .delete()
+            .eq('id', pendingDelete.id);
+        setDeleting(false);
 
-        if (error) {
-            console.error('Error fetching events:', error);
-            return;
-        }
-
-        // Fetch participant counts for each event
-        const eventsWithCounts = await Promise.all(
-            (data || []).map(async (event) => {
-                const { count } = await supabase
-                    .from('event_participants')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('event_id', event.id)
-                    .eq('status', 'joined');
-
-                return {
-                    ...event,
-                    participant_count: count || 0
-                };
-            })
-        );
-
-        setEvents(eventsWithCounts as LocalEvent[]);
-    };
-
-    const handleDeleteEvent = async (eventId: string) => {
-        if (confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
-            const { error } = await supabase.from('local_events').delete().eq('id', eventId);
-            if (error) {
-                console.error('Error deleting event:', error);
-                alert('Failed to delete event');
-            } else {
-                fetchEvents();
-            }
+        if (deleteError) {
+            console.error('Failed to delete event:', deleteError);
+            setError('Could not delete that event.');
+        } else {
+            setPendingDelete(null);
+            fetchEvents();
         }
     };
 
-    const filteredEvents = events.filter(event => {
+    const visible = events.filter((e) => {
         if (filter === 'all') return true;
-        if (filter === 'my-events') return user && event.creator_id === user.uid;
-        return event.event_type === filter;
+        if (filter === 'my-events') return !!user && e.creator_id === user.uid;
+        return e.event_type === filter;
     });
 
+    const busy = authLoading || (loading && !!user);
+
     return (
-        <div className="flex h-screen overflow-hidden bg-slate-50">
-            {/* SIDEBAR (Desktop only) */}
-            <aside className="hidden md:flex flex-col text-white w-64 p-6 fixed h-full z-10 bg-gradient-to-b from-[#5A4FCF] to-[#4a3fc1] rounded-r-[32px] shadow-xl">
-                <div className="flex items-center gap-3 mb-8 cursor-pointer" onClick={() => router.push('/')}>
-                    <div>
-                        <div className="text-lg font-semibold">Dear Kochi</div>
-                        <div className="text-xs opacity-80">Local Events</div>
-                    </div>
-                </div >
+        <div className="mx-auto w-full max-w-6xl pb-10">
+            <div className="page-x pt-5">
+                <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
+                    {filter === 'my-events' ? 'My events' : 'Local events'}
+                </h1>
+                <p className="mt-1 text-sm text-muted">
+                    {filter === 'my-events'
+                        ? 'Events you created.'
+                        : "What's happening in Kochi right now."}
+                </p>
+            </div>
 
-                <nav className="space-y-3">
-                    <button
-                        onClick={() => setFilter('all')}
-                        className={`flex items-center gap-3 w-full px-3 py-3 rounded-xl transition-colors ${filter === 'all' ? 'bg-white/20' : 'hover:bg-white/10'}`}
-                    >
-                        <Calendar size={20} /> <span>Discover</span>
-                    </button>
-                    <button
-                        onClick={() => setFilter('live')}
-                        className={`flex items-center gap-3 w-full px-3 py-3 rounded-xl transition-colors ${filter === 'live' ? 'bg-white/20' : 'hover:bg-white/10'}`}
-                    >
-                        <Zap size={20} /> <span>Live Now</span>
-                    </button>
-                    <button
-                        onClick={() => setFilter('my-events')}
-                        className={`flex items-center gap-3 w-full px-3 py-3 rounded-xl transition-colors ${filter === 'my-events' ? 'bg-white/20' : 'hover:bg-white/10'}`}
-                    >
-                        <UserIcon size={20} /> <span>My Events</span>
-                    </button>
-                    <button
-                        onClick={() => setIsCreateModalOpen(true)}
-                        className="flex items-center gap-3 w-full px-3 py-3 rounded-xl hover:bg-white/10 transition-colors"
-                    >
-                        <Plus size={20} /> <span>Create Event</span>
-                    </button>
-                </nav>
-
-                <div className="mt-auto">
-                    <div className="text-xs opacity-70 mb-2">Profile</div>
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                            <UserIcon size={20} />
-                        </div>
-                        <div className="overflow-hidden">
-                            <div className="font-semibold text-sm truncate">{user?.email?.split('@')[0] || 'Guest'}</div>
-                            <div className="text-xs opacity-70">Kochi, India</div>
-                        </div>
-                    </div>
-                </div>
-            </aside >
-
-            {/* MOBILE TOP BAR */}
-            < header className="md:hidden w-full p-4 bg-[#5A4FCF] text-white flex items-center justify-between fixed top-0 z-20 shadow-md" >
-                <div className="flex items-center gap-2" onClick={() => router.push('/')}>
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white/20 font-bold">DK</div>
-                    <span className="font-semibold text-lg">Local Events</span>
-                </div>
-                <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-xl p-1">
-                    {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-                </button>
-            </header >
-
-            {/* MOBILE MENU OVERLAY */}
-            {
-                mobileMenuOpen && (
-                    <div className="fixed inset-0 z-10 bg-[#5A4FCF] pt-20 px-6 md:hidden">
-                        <nav className="space-y-4 text-white">
-                            <button onClick={() => { setFilter('all'); setMobileMenuOpen(false); }} className="flex items-center gap-3 w-full py-3 text-lg border-b border-white/10">
-                                <Calendar size={24} /> Discover
-                            </button>
-                            <button onClick={() => { setFilter('live'); setMobileMenuOpen(false); }} className="flex items-center gap-3 w-full py-3 text-lg border-b border-white/10">
-                                <Zap size={24} /> Live Now
-                            </button>
-                            <button onClick={() => { setFilter('my-events'); setMobileMenuOpen(false); }} className="flex items-center gap-3 w-full py-3 text-lg border-b border-white/10">
-                                <UserIcon size={24} /> My Events
-                            </button>
-                            <button onClick={() => { setIsCreateModalOpen(true); setMobileMenuOpen(false); }} className="flex items-center gap-3 w-full py-3 text-lg border-b border-white/10">
-                                <Plus size={24} /> Create Event
-                            </button>
-                        </nav>
-                    </div>
-                )
-            }
-
-            {/* MAIN CONTENT */}
-            <main className="flex-1 overflow-y-auto md:ml-64 ml-0 p-6 pt-24 md:pt-6 w-full">
-                <div className="bg-white rounded-[32px] p-8 mb-8 shadow-sm border border-slate-100">
-                    <h1 className="text-3xl font-bold text-slate-800 mb-2">
-                        {filter === 'my-events' ? 'My Events' : 'Discover Local Events'}
-                    </h1>
-                    <p className="text-slate-500">
-                        {filter === 'my-events' ? 'Manage events you have created.' : "Explore what's happening in Kochi right now."}
-                    </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
-                    {filteredEvents.map((event) => (
-                        <EventCard
-                            key={event.id}
-                            event={event}
-                            onClick={() => setSelectedEvent(event)}
-                            onDelete={filter === 'my-events' ? () => handleDeleteEvent(event.id) : undefined}
-                        />
+            <div className="mt-4">
+                <ChipRow aria-label="Filter events">
+                    {FILTERS.map((f) => (
+                        <Chip
+                            key={f.id}
+                            active={filter === f.id}
+                            onClick={() => setFilter(f.id)}
+                        >
+                            <f.icon size={14} />
+                            {f.label}
+                        </Chip>
                     ))}
+                </ChipRow>
+            </div>
 
-                    {filteredEvents.length === 0 && (
-                        <div className="col-span-full text-center py-20 text-slate-400">
-                            <div className="mb-4 flex justify-center"><Calendar size={48} className="opacity-20" /></div>
-                            <p>No active events found. Be the first to create one!</p>
+            <div className="page-x mt-5">
+                {busy ? (
+                    <>
+                        {/* The old page rendered "No active events found"
+                            during loading, so an empty result and a pending
+                            fetch looked identical. */}
+                        <LoadingAnnouncer label="Loading events" />
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                                <SkeletonCard key={i} className="h-44" />
+                            ))}
                         </div>
-                    )}
+                    </>
+                ) : error ? (
+                    <ErrorState description={error} onRetry={fetchEvents} />
+                ) : visible.length === 0 ? (
+                    <EmptyState
+                        icon={CalendarDays}
+                        title={
+                            filter === 'my-events'
+                                ? 'You have no events'
+                                : 'No active events'
+                        }
+                        description={
+                            filter === 'my-events'
+                                ? 'Create one and it will show up here.'
+                                : 'Be the first to put something on the calendar.'
+                        }
+                        action={
+                            <Button onClick={() => setCreateOpen(true)}>
+                                <Plus size={16} />
+                                Create an event
+                            </Button>
+                        }
+                    />
+                ) : (
+                    <ul className="dk-stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {visible.map((event, i) => (
+                            <EventCard
+                                key={event.id}
+                                event={event}
+                                index={i}
+                                onClick={() => setSelected(event)}
+                                onDelete={
+                                    user && event.creator_id === user.uid
+                                        ? () => setPendingDelete(event)
+                                        : undefined
+                                }
+                            />
+                        ))}
+                    </ul>
+                )}
+            </div>
+
+            <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                aria-label="Create an event"
+                className="press fixed right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-e3"
+                style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 5rem)' }}
+            >
+                <Plus size={24} />
+            </button>
+
+            {createOpen && (
+                <CreateEventModal
+                    isOpen={createOpen}
+                    onClose={() => setCreateOpen(false)}
+                    onCreated={() => {
+                        fetchEvents();
+                        setCreateOpen(false);
+                    }}
+                />
+            )}
+
+            {selected && (
+                <EventDetailsModal
+                    event={selected}
+                    isOpen={!!selected}
+                    onClose={() => setSelected(null)}
+                    onUpdate={fetchEvents}
+                />
+            )}
+
+            {/* Replaces window.confirm(), which cannot be styled and reads
+                poorly on mobile. */}
+            <Sheet
+                open={!!pendingDelete}
+                onClose={() => setPendingDelete(null)}
+                title="Delete this event?"
+            >
+                <p className="text-sm leading-relaxed text-muted">
+                    <span className="font-semibold text-foreground">
+                        {pendingDelete?.title}
+                    </span>{' '}
+                    will be removed for everyone. This cannot be undone.
+                </p>
+                <div className="mt-5 flex gap-2">
+                    <Button
+                        variant="secondary"
+                        block
+                        onClick={() => setPendingDelete(null)}
+                    >
+                        Keep it
+                    </Button>
+                    <Button
+                        variant="danger"
+                        block
+                        loading={deleting}
+                        onClick={confirmDelete}
+                    >
+                        Delete
+                    </Button>
                 </div>
-            </main>
-
-            {/* MODALS */}
-            {
-                isCreateModalOpen && (
-                    <CreateEventModal
-                        isOpen={isCreateModalOpen}
-                        onClose={() => {
-                            setIsCreateModalOpen(false);
-                        }}
-                        onCreated={() => {
-                            fetchEvents();
-                            setIsCreateModalOpen(false);
-                        }}
-                    />
-                )
-            }
-
-            {
-                selectedEvent && (
-                    <EventDetailsModal
-                        event={selectedEvent}
-                        isOpen={!!selectedEvent}
-                        onClose={() => setSelectedEvent(null)}
-                        onUpdate={fetchEvents}
-                    />
-                )
-            }
-        </div >
+            </Sheet>
+        </div>
     );
 }

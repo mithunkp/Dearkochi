@@ -237,6 +237,7 @@ export const ShareableDatePlanCard = ({ plan }: { plan: any }) => {
         }
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const getColorClass = (colorCode: string) => {
         switch (colorCode) {
             case 'c1': return 'bg-[#F4C7C7] border-[#F4C7C7]';

@@ -1,140 +1,233 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Users, MapPin, Tag, Calendar, TrendingUp } from 'lucide-react';
+import {
+    Users,
+    MapPin,
+    Tag,
+    Calendar,
+    TrendingUp,
+    Store,
+    ChevronRight,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Skeleton } from '@/components/ui/Skeleton';
+
+type Stats = {
+    users: number;
+    places: number;
+    classifieds: number;
+    events: number;
+    stores: number;
+};
+
+const QUICK_ACTIONS: { href: string; label: string; icon: LucideIcon }[] = [
+    { href: '/admin/places', label: 'Manage places', icon: MapPin },
+    { href: '/admin/classified', label: 'Manage classifieds', icon: Tag },
+    { href: '/admin/events', label: 'Manage events', icon: Calendar },
+    { href: '/admin/stores', label: 'Manage stores', icon: Store },
+];
 
 export default function AdminDashboard() {
-    const [stats, setStats] = useState({
-        users: 0,
-        places: 0,
-        classifieds: 0,
-        events: 0
-    });
-    const [dailyStats, setDailyStats] = useState<{ date: string; visit_count: number }[]>([]);
+    const [stats, setStats] = useState<Stats | null>(null);
+    const [daily, setDaily] = useState<{ date: string; visit_count: number }[]>(
+        [],
+    );
+
+    const fetchStats = useCallback(async () => {
+        const head = { count: 'exact' as const, head: true };
+        const [users, places, classifieds, events, stores] =
+            await Promise.allSettled([
+                supabase.from('profiles').select('*', head),
+                supabase.from('user_places').select('*', head),
+                supabase
+                    .from('classified_ads')
+                    .select('*', head)
+                    .eq('status', 'active'),
+                // Was hardcoded to 0 with a "Placeholder" comment, so the
+                // events tile always read zero regardless of the data.
+                supabase.from('local_events').select('*', head),
+                supabase.from('stores').select('*', head),
+            ]);
+
+        const value = (r: PromiseSettledResult<{ count: number | null }>) =>
+            r.status === 'fulfilled' ? (r.value.count ?? 0) : 0;
+
+        setStats({
+            users: value(users),
+            places: value(places),
+            classifieds: value(classifieds),
+            events: value(events),
+            stores: value(stores),
+        });
+    }, []);
+
+    const fetchDaily = useCallback(async () => {
+        const { data, error } = await supabase
+            .from('daily_site_stats')
+            .select('date, visit_count')
+            .order('date', { ascending: false })
+            .limit(7);
+
+        if (!error && data) setDaily([...data].reverse());
+    }, []);
 
     useEffect(() => {
         fetchStats();
-        fetchDailyStats();
-    }, []);
+        fetchDaily();
+    }, [fetchStats, fetchDaily]);
 
-    const fetchStats = async () => {
-        try {
-            const [users, places, classifieds] = await Promise.allSettled([
-                supabase.from('profiles').select('*', { count: 'exact', head: true }),
-                supabase.from('user_places').select('*', { count: 'exact', head: true }),
-                supabase.from('classified_ads').select('*', { count: 'exact', head: true })
-            ]);
+    const cards: { label: string; value: number; icon: LucideIcon; fg: string; bg: string }[] =
+        [
+            {
+                label: 'Users',
+                value: stats?.users ?? 0,
+                icon: Users,
+                fg: 'text-cat-transport',
+                bg: 'bg-cat-transport-soft',
+            },
+            {
+                label: 'Places',
+                value: stats?.places ?? 0,
+                icon: MapPin,
+                fg: 'text-cat-places',
+                bg: 'bg-cat-places-soft',
+            },
+            {
+                label: 'Active ads',
+                value: stats?.classifieds ?? 0,
+                icon: Tag,
+                fg: 'text-cat-classified',
+                bg: 'bg-cat-classified-soft',
+            },
+            {
+                label: 'Events',
+                value: stats?.events ?? 0,
+                icon: Calendar,
+                fg: 'text-cat-events',
+                bg: 'bg-cat-events-soft',
+            },
+            {
+                label: 'Stores',
+                value: stats?.stores ?? 0,
+                icon: Store,
+                fg: 'text-cat-stores',
+                bg: 'bg-cat-stores-soft',
+            },
+        ];
 
-            setStats({
-                users: users.status === 'fulfilled' && users.value.count ? users.value.count : 0,
-                places: places.status === 'fulfilled' && places.value.count ? places.value.count : 0,
-                classifieds: classifieds.status === 'fulfilled' && classifieds.value.count ? classifieds.value.count : 0,
-                events: 0 // Placeholder
-            });
-        } catch (e) {
-            console.error("Dashboard stats error", e);
-        }
-    };
-
-    const fetchDailyStats = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('daily_site_stats')
-                .select('date, visit_count')
-                .order('date', { ascending: false })
-                .limit(7);
-
-            if (!error && data) {
-                // Reverse to show oldest to newest left-to-right
-                setDailyStats(data.reverse());
-            }
-        } catch (e) {
-            console.error("Daily stats error", e);
-        }
-    };
-
-    const statCards = [
-        { label: 'Total Users', value: stats.users, icon: Users, color: 'text-blue-600', bg: 'bg-blue-100' },
-        { label: 'Places / Gems', value: stats.places, icon: MapPin, color: 'text-green-600', bg: 'bg-green-100' },
-        { label: 'Active Ads', value: stats.classifieds, icon: Tag, color: 'text-purple-600', bg: 'bg-purple-100' },
-        { label: 'Events', value: stats.events, icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-100' },
-    ];
-
-    const maxVisits = Math.max(...dailyStats.map(s => s.visit_count), 5); // Avoid div by zero
+    const maxVisits = Math.max(...daily.map((d) => d.visit_count), 5);
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
-                <p className="text-gray-500">Welcome back, Admin</p>
+                <h1 className="text-[24px] font-extrabold tracking-tight text-foreground">
+                    Dashboard
+                </h1>
+                <p className="mt-0.5 text-sm text-muted">
+                    Overview of Dear Kochi content and traffic.
+                </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {statCards.map((stat) => (
-                    <div key={stat.label} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex items-start justify-between">
-                        <div>
-                            <p className="text-sm font-medium text-gray-500 mb-1">{stat.label}</p>
-                            <h3 className="text-2xl font-bold text-gray-900">{stat.value}</h3>
-                        </div>
-                        <div className={`p-3 rounded-lg ${stat.bg}`}>
-                            <stat.icon className={stat.color} size={24} />
-                        </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                {cards.map((card) => (
+                    <div
+                        key={card.label}
+                        className="rounded-2xl border border-line bg-surface p-4 shadow-e1"
+                    >
+                        <span
+                            className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${card.bg} ${card.fg}`}
+                        >
+                            <card.icon size={19} />
+                        </span>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-faint">
+                            {card.label}
+                        </p>
+                        {stats ? (
+                            <p className="mt-0.5 text-2xl font-extrabold text-foreground">
+                                {card.value}
+                            </p>
+                        ) : (
+                            <Skeleton className="mt-1 h-7 w-12" />
+                        )}
                     </div>
                 ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Analytics Chart */}
-                <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                            <TrendingUp size={20} className="text-blue-500" /> Site Traffic
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+                <div className="rounded-2xl border border-line bg-surface p-5 shadow-e1 lg:col-span-2">
+                    <div className="mb-5 flex items-center justify-between gap-2">
+                        <h2 className="flex items-center gap-2 text-[15px] font-bold text-foreground">
+                            <TrendingUp size={18} className="text-primary" />
+                            Site traffic
                         </h2>
-                        <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-1 rounded-full">Last 7 Days</span>
+                        <span className="rounded-full bg-surface-2 px-2 py-1 text-[11px] font-semibold text-muted">
+                            Last 7 days
+                        </span>
                     </div>
 
-                    {dailyStats.length > 0 ? (
-                        <div className="h-64 flex items-end justify-between gap-2">
-                            {dailyStats.map((stat) => {
-                                const heightPercentage = (stat.visit_count / maxVisits) * 100;
-                                const dateLabel = new Date(stat.date).toLocaleDateString('en-US', { weekday: 'short' });
+                    {daily.length > 0 ? (
+                        <ul className="flex h-56 items-end justify-between gap-2">
+                            {daily.map((d) => {
+                                const pct = Math.max(
+                                    4,
+                                    (d.visit_count / maxVisits) * 100,
+                                );
                                 return (
-                                    <div key={stat.date} className="flex-1 flex flex-col items-center gap-2 group">
-                                        <div
-                                            className="w-full bg-blue-100 rounded-t-lg relative group-hover:bg-blue-200 transition-colors"
-                                            style={{ height: `${heightPercentage}%` }}
-                                        >
-                                            <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs py-1 px-2 rounded pointer-events-none whitespace-nowrap transition-opacity">
-                                                {stat.visit_count} Views
-                                            </div>
-                                        </div>
-                                        <span className="text-xs text-gray-500 font-medium">{dateLabel}</span>
-                                    </div>
+                                    <li
+                                        key={d.date}
+                                        className="flex flex-1 flex-col items-center gap-2"
+                                    >
+                                        <span className="text-[11px] font-bold tabular-nums text-muted">
+                                            {d.visit_count}
+                                        </span>
+                                        <span className="flex w-full flex-1 items-end">
+                                            <span
+                                                className="w-full rounded-t-lg bg-primary/80 transition-[height] duration-500 ease-out"
+                                                style={{ height: `${pct}%` }}
+                                            />
+                                        </span>
+                                        <span className="text-[11px] font-medium text-faint">
+                                            {new Date(d.date).toLocaleDateString(
+                                                'en-IN',
+                                                { weekday: 'short' },
+                                            )}
+                                        </span>
+                                    </li>
                                 );
                             })}
-                        </div>
+                        </ul>
                     ) : (
-                        <div className="h-64 flex items-center justify-center text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                            No traffic data available yet
+                        <div className="flex h-56 items-center justify-center rounded-xl border border-dashed border-line text-sm text-muted">
+                            No traffic recorded yet
                         </div>
                     )}
                 </div>
 
-                {/* Quick Actions */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-4">Quick Actions</h2>
-                    <div className="space-y-4">
-                        <button className="w-full p-4 border border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-red-500 hover:text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center gap-2">
-                            <MapPin size={20} /> Add Verified Place
-                        </button>
-                        <button className="w-full p-4 border border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-500 hover:text-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
-                            <Tag size={20} /> Review New Ads
-                        </button>
-                        <button className="w-full p-4 border border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-green-500 hover:text-green-500 hover:bg-green-50 transition-colors flex items-center justify-center gap-2">
-                            <Users size={20} /> Manage Users
-                        </button>
-                    </div>
+                <div className="rounded-2xl border border-line bg-surface p-5 shadow-e1">
+                    <h2 className="text-[15px] font-bold text-foreground">
+                        Quick actions
+                    </h2>
+                    <ul className="mt-3 space-y-2">
+                        {QUICK_ACTIONS.map((a) => (
+                            <li key={a.href}>
+                                {/* These were unhandled <button> elements. */}
+                                <Link
+                                    href={a.href}
+                                    className="press flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-sm font-semibold text-foreground"
+                                >
+                                    <a.icon size={17} className="text-muted" />
+                                    {a.label}
+                                    <ChevronRight
+                                        size={16}
+                                        className="ml-auto text-faint"
+                                    />
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
                 </div>
             </div>
         </div>

@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+
 import {
     ShieldAlert,
     Ambulance,
@@ -8,56 +8,180 @@ import {
     Baby,
     Shield,
     Phone,
-    ArrowLeft
+    Hospital,
+    LifeBuoy,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-import { Header } from '@/components/Header';
-import { GlassCard } from '@/components/ui/GlassCard';
+type Contact = {
+    label: string;
+    number: string;
+    detail: string;
+    icon: LucideIcon;
+    fg: string;
+    bg: string;
+};
+
+const PRIMARY: Contact[] = [
+    {
+        label: 'Emergency (all services)',
+        number: '112',
+        detail: 'Single national emergency number',
+        icon: LifeBuoy,
+        fg: 'text-cat-emergency',
+        bg: 'bg-cat-emergency-soft',
+    },
+    {
+        label: 'Ambulance',
+        number: '108',
+        detail: 'Free 24/7 medical transport',
+        icon: Ambulance,
+        fg: 'text-cat-emergency',
+        bg: 'bg-cat-emergency-soft',
+    },
+    {
+        label: 'Police control room',
+        number: '100',
+        detail: 'Kochi City Police',
+        icon: ShieldAlert,
+        fg: 'text-cat-transport',
+        bg: 'bg-cat-transport-soft',
+    },
+    {
+        label: 'Fire & rescue',
+        number: '101',
+        detail: 'Fire, rescue and hazard response',
+        icon: Flame,
+        fg: 'text-cat-places',
+        bg: 'bg-cat-places-soft',
+    },
+];
+
+const SUPPORT: Contact[] = [
+    {
+        label: 'Women helpline',
+        number: '1091',
+        detail: 'Round-the-clock assistance',
+        icon: HeartHandshake,
+        fg: 'text-cat-events',
+        bg: 'bg-cat-events-soft',
+    },
+    {
+        label: 'Child helpline',
+        number: '1098',
+        detail: 'Childline India',
+        icon: Baby,
+        fg: 'text-cat-social',
+        bg: 'bg-cat-social-soft',
+    },
+    {
+        label: 'Cyber crime',
+        number: '1930',
+        detail: 'Report online fraud',
+        icon: Shield,
+        fg: 'text-cat-stores',
+        bg: 'bg-cat-stores-soft',
+    },
+    {
+        label: 'Disaster management',
+        number: '1077',
+        detail: 'Ernakulam district control room',
+        icon: Hospital,
+        fg: 'text-cat-classified',
+        bg: 'bg-cat-classified-soft',
+    },
+];
 
 export default function EmergencyPage() {
-    const contacts = [
-        { label: 'Police Control Room', number: '100', icon: ShieldAlert, color: 'text-blue-600', bg: 'bg-blue-100' },
-        { label: 'Ambulance', number: '108', icon: Ambulance, color: 'text-red-600', bg: 'bg-red-100' },
-        { label: 'Fire Station', number: '101', icon: Flame, color: 'text-orange-600', bg: 'bg-orange-100' },
-        { label: 'Women Helpline', number: '1091', icon: HeartHandshake, color: 'text-pink-600', bg: 'bg-pink-100' },
-        { label: 'Child Helpline', number: '1098', icon: Baby, color: 'text-purple-600', bg: 'bg-purple-100' },
-        { label: 'Cyber Cell', number: '112', icon: Shield, color: 'text-slate-600', bg: 'bg-slate-100' },
-    ];
-
     return (
-        <div className="min-h-screen flex flex-col">
-            <Header />
+        <div className="mx-auto w-full max-w-3xl pb-10">
+            <div className="page-x pt-5">
+                <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
+                    Emergency
+                </h1>
+                <p className="mt-1 text-sm leading-relaxed text-muted">
+                    Tap any card to dial straight away. These numbers are free
+                    from any phone in India.
+                </p>
+            </div>
 
-            <main className="flex-1 px-8 py-10 max-w-5xl mx-auto w-full">
-                <div className="flex items-center gap-4 mb-8">
-                    <Link href="/" className="w-10 h-10 rounded-full bg-white/60 backdrop-blur-sm border border-white/40 flex items-center justify-center text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">
-                        <ArrowLeft size={20} />
-                    </Link>
-                    <div>
-                        <h1 className="text-3xl font-bold text-slate-800">Emergency Contacts</h1>
-                        <p className="text-sm text-slate-500 font-medium">Help is just a call away</p>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {contacts.map((contact) => (
-                        <GlassCard key={contact.label} className="flex items-center p-6 border-l-4 border-l-red-500 hover:shadow-lg transition-shadow">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center mr-4 ${contact.bg} ${contact.color}`}>
-                                <contact.icon size={24} />
-                            </div>
-                            <div>
-                                <dt className="text-sm font-medium text-slate-500 truncate">{contact.label}</dt>
-                                <dd className="mt-1 text-2xl font-bold text-slate-800 flex items-center gap-2">
-                                    {contact.number}
-                                    <a href={`tel:${contact.number}`} className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center hover:bg-green-200 transition-colors" title="Call Now">
-                                        <Phone size={14} />
-                                    </a>
-                                </dd>
-                            </div>
-                        </GlassCard>
+            <div className="page-x mt-5">
+                <h2 className="mb-2.5 text-[13px] font-bold uppercase tracking-wide text-faint">
+                    Immediate help
+                </h2>
+                <ul className="dk-stagger space-y-2.5">
+                    {PRIMARY.map((c, i) => (
+                        <ContactRow key={c.number} contact={c} index={i} urgent />
                     ))}
-                </div>
-            </main>
+                </ul>
+            </div>
+
+            <div className="page-x mt-7">
+                <h2 className="mb-2.5 text-[13px] font-bold uppercase tracking-wide text-faint">
+                    Support lines
+                </h2>
+                <ul className="dk-stagger space-y-2.5">
+                    {SUPPORT.map((c, i) => (
+                        <ContactRow key={c.number} contact={c} index={i} />
+                    ))}
+                </ul>
+            </div>
+
+            <p className="page-x mt-7 text-xs leading-relaxed text-faint">
+                If you are in immediate danger, call 112. Numbers are published
+                by the Government of India and Kerala Police; Dear Kochi does
+                not operate these services.
+            </p>
         </div>
+    );
+}
+
+function ContactRow({
+    contact,
+    index,
+    urgent,
+}: {
+    contact: Contact;
+    index: number;
+    urgent?: boolean;
+}) {
+    const { label, number, detail, icon: Icon, fg, bg } = contact;
+    return (
+        <li style={{ '--dk-i': index } as React.CSSProperties}>
+            {/* The whole row is the call target. Previously the only way to
+                dial was a 32px icon button — well under the 44px minimum. */}
+            <a
+                href={`tel:${number}`}
+                aria-label={`Call ${label} on ${number}`}
+                className={`press flex items-center gap-3.5 rounded-2xl border bg-surface p-3.5 shadow-e1 hover:shadow-e2 ${urgent
+                        ? 'border-cat-emergency/30'
+                        : 'border-line hover:border-line-strong'
+                    }`}
+            >
+                <span
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${bg} ${fg}`}
+                >
+                    <Icon size={23} />
+                </span>
+
+                <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] font-bold leading-tight text-foreground">
+                        {label}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-muted">
+                        {detail}
+                    </span>
+                </span>
+
+                <span className="flex shrink-0 items-center gap-2.5">
+                    <span className="text-xl font-extrabold tabular-nums tracking-tight text-foreground">
+                        {number}
+                    </span>
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-success-soft text-success">
+                        <Phone size={17} />
+                    </span>
+                </span>
+            </a>
+        </li>
     );
 }

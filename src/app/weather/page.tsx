@@ -1,6 +1,6 @@
 import { getWeather, getWeatherDescription, getWeatherIcon } from '@/lib/weather';
-import Link from 'next/link';
-import Image from 'next/image';
+import { Clock, CalendarDays } from 'lucide-react';
+import { ErrorState } from '@/components/ui/EmptyState';
 import CurrentWeatherCard from './CurrentWeatherCard';
 
 export { metadata } from './metadata';
@@ -10,94 +10,140 @@ export default async function WeatherPage() {
 
     if (!weather) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-blue-50">
-                <div className="text-center">
-                    <h1 className="text-2xl font-bold text-gray-900">Weather Unavailable</h1>
-                    <p className="text-gray-500 mt-2">Could not fetch weather data. Please try again later.</p>
-                    <Link href="/" className="mt-4 inline-block text-blue-600 hover:underline">Back to Dashboard</Link>
-                </div>
+            <div className="page-x mx-auto w-full max-w-2xl pt-8">
+                <ErrorState
+                    title="Weather unavailable"
+                    description="We couldn't reach the forecast service. Please try again shortly."
+                />
             </div>
         );
     }
 
-    const { current, daily, hourly } = weather;
+    const { daily, hourly } = weather;
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 py-12 px-4 sm:px-6 lg:px-8 font-sans text-gray-900">
-            <div className="max-w-4xl mx-auto">
-                <div className="flex items-center justify-between mb-8">
-                    <Link href="/" className="text-blue-600 font-bold hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
-                        <div className="relative w-4 h-4"><Image src="/arrow-back.svg" alt="Back" fill className="object-contain" /></div> Back
-                    </Link>
-                    <h1 className="text-3xl font-bold text-gray-900">Kochi Weather</h1>
-                    <div className="w-20"></div> {/* Spacer */}
-                </div>
-
-                {/* Current Weather Card */}
-                <CurrentWeatherCard weather={weather} />
-
-                {/* Forecast Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-
-                    {/* Hourly Forecast (Next 6 hours) */}
-                    <div className="bg-white rounded-3xl shadow-lg p-8">
-                        <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-                            <div className="relative w-6 h-6"><Image src="/info-clock.svg" alt="Hourly" fill className="object-contain" /></div> Hourly Forecast
-                        </h3>
-                        <div className="space-y-4">
-                            {hourly.time.slice(0, 6).map((t, i) => {
-                                const date = new Date(t);
-                                const isNow = i === 0;
-                                return (
-                                    <div key={i} className={`flex items-center justify-between p-3 rounded-xl ${isNow ? 'bg-blue-50 border border-blue-100' : 'hover:bg-gray-50'}`}>
-                                        <div className="w-16 font-medium text-gray-600">
-                                            {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </div>
-                                        <div className="relative w-8 h-8">
-                                            {(() => {
-                                                const Icon = getWeatherIcon(hourly.weatherCode[i], true);
-                                                return <Icon className="w-full h-full text-blue-500" />;
-                                            })()}
-                                        </div>
-                                        <div className="font-bold text-gray-900 w-12 text-right">
-                                            {Math.round(hourly.temperature[i])}°
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    {/* 7-Day Forecast */}
-                    <div className="bg-white rounded-3xl shadow-lg p-8">
-                        <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-                            <div className="relative w-6 h-6"><Image src="/card-weather.svg" alt="Daily" fill className="object-contain" /></div> 7-Day Forecast
-                        </h3>
-                        <div className="space-y-4">
-                            {daily.time.map((t, i) => {
-                                const date = new Date(t);
-                                const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
-                                return (
-                                    <div key={i} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors">
-                                        <div className="w-24 font-medium text-gray-700">{i === 0 ? 'Today' : dayName}</div>
-                                        <div className="relative w-8 h-8">
-                                            {(() => {
-                                                const Icon = getWeatherIcon(daily.weatherCode[i]);
-                                                return <Icon className="w-full h-full text-blue-500" />;
-                                            })()}
-                                        </div>
-                                        <div className="flex gap-3 w-24 justify-end">
-                                            <span className="font-bold text-gray-900">{Math.round(daily.temperatureMax[i])}°</span>
-                                            <span className="text-gray-400">{Math.round(daily.temperatureMin[i])}°</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                </div>
+        <div className="mx-auto w-full max-w-3xl pb-10">
+            <div className="page-x pt-5">
+                <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
+                    Weather
+                </h1>
+                <p className="mt-1 text-sm text-muted">
+                    Live conditions and forecast for Kochi.
+                </p>
             </div>
+
+            <div className="mt-4">
+                <CurrentWeatherCard weather={weather} />
+            </div>
+
+            <section className="page-x mt-6">
+                <h2 className="flex items-center gap-2 text-[17px] font-bold tracking-tight text-foreground">
+                    <Clock size={17} className="text-muted" />
+                    Hourly
+                </h2>
+                <ul className="mt-3 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface shadow-e1">
+                    {hourly.time.slice(0, 8).map((t, i) => {
+                        const date = new Date(t);
+                        const Icon = getWeatherIcon(
+                            hourly.weatherCode[i],
+                            // Daylight roughly 6am–6:30pm in Kochi; the hourly
+                            // feed has no is_day flag of its own.
+                            date.getHours() >= 6 && date.getHours() < 18,
+                        );
+                        return (
+                            <li
+                                key={t}
+                                className={`flex items-center gap-3 px-4 py-3 ${i === 0 ? 'bg-primary-soft/40' : ''
+                                    }`}
+                            >
+                                <span className="w-16 shrink-0 text-[13px] font-semibold text-muted">
+                                    {i === 0
+                                        ? 'Now'
+                                        : date.toLocaleTimeString('en-IN', {
+                                            hour: 'numeric',
+                                            hour12: true,
+                                        })}
+                                </span>
+                                <Icon
+                                    size={19}
+                                    className="shrink-0 text-cat-weather"
+                                />
+                                <span className="min-w-0 flex-1 truncate text-[13px] text-muted">
+                                    {getWeatherDescription(
+                                        hourly.weatherCode[i],
+                                    )}
+                                </span>
+                                <span className="shrink-0 text-[15px] font-bold tabular-nums text-foreground">
+                                    {Math.round(hourly.temperature[i])}°
+                                </span>
+                            </li>
+                        );
+                    })}
+                </ul>
+            </section>
+
+            <section className="page-x mt-6">
+                <h2 className="flex items-center gap-2 text-[17px] font-bold tracking-tight text-foreground">
+                    <CalendarDays size={17} className="text-muted" />
+                    7-day forecast
+                </h2>
+                <ul className="mt-3 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface shadow-e1">
+                    {daily.time.map((t, i) => {
+                        const date = new Date(t);
+                        const Icon = getWeatherIcon(daily.weatherCode[i], true);
+                        const max = Math.round(daily.temperatureMax[i]);
+                        const min = Math.round(daily.temperatureMin[i]);
+
+                        // Position each day's range within the week's overall
+                        // range, so the bars compare days at a glance.
+                        const weekMin = Math.min(...daily.temperatureMin);
+                        const weekMax = Math.max(...daily.temperatureMax);
+                        const span = weekMax - weekMin || 1;
+                        const left = ((min - weekMin) / span) * 100;
+                        const width = Math.max(8, ((max - min) / span) * 100);
+
+                        return (
+                            <li
+                                key={t}
+                                className="flex items-center gap-3 px-4 py-3"
+                            >
+                                <span className="w-16 shrink-0 text-[13px] font-semibold text-foreground">
+                                    {i === 0
+                                        ? 'Today'
+                                        : date.toLocaleDateString('en-IN', {
+                                            weekday: 'short',
+                                        })}
+                                </span>
+                                <Icon
+                                    size={19}
+                                    className="shrink-0 text-cat-weather"
+                                />
+                                <span className="w-8 shrink-0 text-right text-[13px] tabular-nums text-muted">
+                                    {min}°
+                                </span>
+                                <span
+                                    className="relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3"
+                                    aria-hidden
+                                >
+                                    <span
+                                        className="absolute inset-y-0 rounded-full bg-gradient-to-r from-cat-transport to-cat-places"
+                                        style={{
+                                            left: `${left}%`,
+                                            width: `${width}%`,
+                                        }}
+                                    />
+                                </span>
+                                <span className="w-8 shrink-0 text-[13px] font-bold tabular-nums text-foreground">
+                                    {max}°
+                                </span>
+                            </li>
+                        );
+                    })}
+                </ul>
+                <p className="mt-2 text-[11px] text-faint">
+                    Forecast and air quality from Open-Meteo.
+                </p>
+            </section>
         </div>
     );
 }

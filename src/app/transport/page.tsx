@@ -1,17 +1,22 @@
-import Link from 'next/link';
-import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { ArrowLeft, Fuel, AlertTriangle, Map, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import {
+    Fuel,
+    AlertTriangle,
+    Map as MapIcon,
+    TrendingUp,
+    TrendingDown,
+    Minus,
+    ExternalLink,
+} from 'lucide-react';
 
 import TransportModes from './TransportModes';
-import { Header } from '@/components/Header';
-import { GlassCard } from '@/components/ui/GlassCard';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { formatRelative } from '@/lib/format';
 
 export { metadata } from './metadata';
 
-// Types
 type TrafficAlert = {
     id: number;
     location: string;
@@ -19,6 +24,7 @@ type TrafficAlert = {
     details: string;
     severity: 'high' | 'medium' | 'low';
     time: string;
+    created_at?: string;
 };
 
 type FuelPrice = {
@@ -26,6 +32,7 @@ type FuelPrice = {
     type: string;
     price: string;
     trend: 'up' | 'stable' | 'down';
+    updated_at?: string;
 };
 
 type MetroStation = {
@@ -49,191 +56,232 @@ type WaterMetroSchedule = {
 };
 
 async function getTransportData() {
-    const results = await Promise.all([
-        supabase.from('traffic_alerts').select('*').order('created_at', { ascending: false }),
-        supabase.from('fuel_prices').select('*').order('id', { ascending: true })
+    const [trafficRes, fuelRes] = await Promise.all([
+        supabase
+            .from('traffic_alerts')
+            .select('*')
+            .order('created_at', { ascending: false }),
+        supabase.from('fuel_prices').select('*').order('id', { ascending: true }),
     ]);
 
-    const [trafficRes, fuelRes] = results;
-
     return {
-        trafficAlerts: (trafficRes.data as TrafficAlert[]) || [],
-        fuelPrices: (fuelRes.data as FuelPrice[]) || []
+        trafficAlerts: (trafficRes.data as TrafficAlert[]) ?? [],
+        fuelPrices: (fuelRes.data as FuelPrice[]) ?? [],
     };
 }
 
-async function getMetroTimetable(): Promise<{ data: MetroStation[], error: string | null }> {
+/** Parse a CSV of fixed column order into typed rows. */
+async function readCsv<T>(
+    file: string,
+    minColumns: number,
+    build: (values: string[]) => T,
+): Promise<{ data: T[]; error: string | null }> {
     try {
-        const filePath = path.join(process.cwd(), 'public', 'kochi_metro_timetable_backup.csv');
-        const fileContent = await fs.readFile(filePath, 'utf-8');
-        const lines = fileContent.trim().split('\n');
+        const filePath = path.join(process.cwd(), 'public', file);
+        const content = await fs.readFile(filePath, 'utf-8');
+        const lines = content.trim().split('\n');
 
-        // Skip header and parse CSV
-        const stations: MetroStation[] = [];
+        const rows: T[] = [];
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i].trim();
             if (!line) continue;
-
             const values = line.split(',');
-            if (values.length >= 7) {
-                stations.push({
-                    station: values[0],
-                    firstTrainAluva: values[1],
-                    firstTrainPettah: values[2],
-                    lastTrainAluva: values[3],
-                    lastTrainPettah: values[4],
-                    peakFrequency: values[5],
-                    offPeakFrequency: values[6]
-                });
-            }
+            if (values.length >= minColumns) rows.push(build(values));
         }
-        return { data: stations, error: null };
-    } catch (error) {
-        console.error('Error reading metro timetable:', error);
-        return { data: [], error: 'Failed to load Metro timetable. Please try again later.' };
-    }
-}
-
-async function getWaterMetroSchedule(): Promise<{ data: WaterMetroSchedule[], error: string | null }> {
-    try {
-        const filePath = path.join(process.cwd(), 'public', 'kochi_water_metro_schedule.csv');
-        const fileContent = await fs.readFile(filePath, 'utf-8');
-        const lines = fileContent.trim().split('\n');
-
-        // Skip header and parse CSV
-        const schedules: WaterMetroSchedule[] = [];
-        for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line) continue;
-
-            const values = line.split(',');
-            if (values.length >= 7) {
-                schedules.push({
-                    route: values[0],
-                    from: values[1],
-                    to: values[2],
-                    firstTrip: values[3],
-                    lastTrip: values[4],
-                    frequency: values[5],
-                    fare: values[6]
-                });
-            }
-        }
-        return { data: schedules, error: null };
-    } catch (error) {
-        console.error('Error reading water metro schedule:', error);
-        return { data: [], error: 'Failed to load Water Metro schedule. Please try again later.' };
+        return { data: rows, error: null };
+    } catch (err) {
+        console.error(`Error reading ${file}:`, err);
+        return { data: [], error: 'Timetable could not be loaded.' };
     }
 }
 
 export default async function TransportPage() {
     const { trafficAlerts, fuelPrices } = await getTransportData();
-    const { data: metroStations, error: metroError } = await getMetroTimetable();
-    const { data: waterMetroSchedules, error: waterMetroError } = await getWaterMetroSchedule();
 
-    // Fallback if DB is empty (Optional: remove this if you want it to be strictly DB driven)
-    const displayTraffic = trafficAlerts.length > 0 ? trafficAlerts : [
-        { id: 1, location: 'Demo: MG Road', status: 'Heavy Traffic', details: 'Sample alert. Add data to DB.', severity: 'high', time: 'Just now' }
-    ] as TrafficAlert[];
-
-    const displayFuel = fuelPrices.length > 0 ? fuelPrices : [
-        { id: 1, type: 'Petrol', price: '₹103.58', trend: 'stable' },
-        { id: 2, type: 'Diesel', price: '₹94.82', trend: 'up' },
-        { id: 3, type: 'CNG', price: '₹85.00', trend: 'stable' }
-    ] as FuelPrice[];
+    const [metro, water] = await Promise.all([
+        readCsv<MetroStation>(
+            'kochi_metro_timetable_backup.csv',
+            7,
+            (v) => ({
+                station: v[0],
+                firstTrainAluva: v[1],
+                firstTrainPettah: v[2],
+                lastTrainAluva: v[3],
+                lastTrainPettah: v[4],
+                peakFrequency: v[5],
+                offPeakFrequency: v[6],
+            }),
+        ),
+        readCsv<WaterMetroSchedule>(
+            'kochi_water_metro_schedule.csv',
+            7,
+            (v) => ({
+                route: v[0],
+                from: v[1],
+                to: v[2],
+                firstTrip: v[3],
+                lastTrip: v[4],
+                frequency: v[5],
+                fare: v[6],
+            }),
+        ),
+    ]);
 
     return (
-        <div className="min-h-screen flex flex-col">
-            <Header />
+        <div className="mx-auto w-full max-w-4xl pb-10">
+            <div className="page-x pt-5">
+                <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
+                    Transport
+                </h1>
+                <p className="mt-1 text-sm text-muted">
+                    Metro, ferry, bus and road conditions in Kochi.
+                </p>
+            </div>
 
-            <main className="flex-1 px-8 py-10 max-w-7xl mx-auto w-full">
-                <div className="flex items-center gap-4 mb-8">
-                    <Link href="/" className="w-10 h-10 rounded-full bg-white/60 backdrop-blur-sm border border-white/40 flex items-center justify-center text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">
-                        <ArrowLeft size={20} />
-                    </Link>
-                    <div>
-                        <h1 className="text-3xl font-bold text-slate-800">Transport Hub</h1>
-                        <p className="text-sm text-slate-500 font-medium">Kochi City Guide</p>
-                    </div>
-                </div>
+            <div className="mt-6">
+                <TransportModes
+                    metroStations={metro.data}
+                    waterMetroSchedules={water.data}
+                    metroError={metro.error}
+                    waterMetroError={water.error}
+                />
+            </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Fuel prices — real rows from the database only. */}
+            <section className="page-x mt-7">
+                <h2 className="flex items-center gap-2 text-[17px] font-bold tracking-tight text-foreground">
+                    <Fuel size={18} className="text-cat-places" />
+                    Fuel prices
+                </h2>
+                {fuelPrices.length === 0 ? (
+                    <EmptyState
+                        className="mt-3"
+                        icon={Fuel}
+                        title="No prices published"
+                        description="Fuel prices haven't been updated yet."
+                    />
+                ) : (
+                    <ul className="mt-3 grid grid-cols-3 gap-2">
+                        {fuelPrices.map((fuel) => (
+                            <li
+                                key={fuel.id}
+                                className="rounded-2xl border border-line bg-surface p-3 text-center shadow-e1"
+                            >
+                                <span className="block text-[11px] font-bold uppercase tracking-wide text-faint">
+                                    {fuel.type}
+                                </span>
+                                <span className="mt-0.5 block text-lg font-extrabold text-foreground">
+                                    {fuel.price}
+                                </span>
+                                {/* This block's class list previously had
+                                    stray spaces inside each utility name, so
+                                    every one was invalid and the trend
+                                    indicator rendered unstyled. */}
+                                <span
+                                    className={`mt-1 flex items-center justify-center gap-1 text-[11px] font-bold ${fuel.trend === 'up'
+                                            ? 'text-danger'
+                                            : fuel.trend === 'down'
+                                                ? 'text-success'
+                                                : 'text-muted'
+                                        }`}
+                                >
+                                    {fuel.trend === 'up' ? (
+                                        <TrendingUp size={12} />
+                                    ) : fuel.trend === 'down' ? (
+                                        <TrendingDown size={12} />
+                                    ) : (
+                                        <Minus size={12} />
+                                    )}
+                                    {fuel.trend === 'up'
+                                        ? 'Rising'
+                                        : fuel.trend === 'down'
+                                            ? 'Falling'
+                                            : 'Stable'}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
 
-                    {/* Left Column: Transport Modes & Fuel */}
-                    <div className="lg:col-span-2 space-y-8">
+            {/* Traffic alerts. The old page substituted a fabricated
+                "Demo: MG Road — Sample alert. Add data to DB." row when the
+                table was empty, which is what production was showing. */}
+            <section className="page-x mt-7">
+                <h2 className="flex items-center gap-2 text-[17px] font-bold tracking-tight text-foreground">
+                    <AlertTriangle size={18} className="text-cat-emergency" />
+                    Traffic alerts
+                </h2>
 
-                        {/* Transport Modes with Metro Timetable */}
-                        <GlassCard>
-                            <TransportModes
-                                metroStations={metroStations}
-                                waterMetroSchedules={waterMetroSchedules}
-                                metroError={metroError}
-                                waterMetroError={waterMetroError}
-                            />
-                        </GlassCard>
-
-                        {/* Fuel Prices */}
-                        <GlassCard>
-                            <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                <Fuel className="text-orange-500" size={24} /> Fuel Prices <span className="text-xs font-normal text-slate-400 ml-auto">Updated Today</span>
-                            </h2>
-                            <div className="grid grid-cols-3 gap-4">
-                                {displayFuel.map((fuel, i) => (
-                                    <div key={i} className="bg-white/50 rounded-2xl p-4 text-center border border-white/40">
-                                        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{fuel.type}</div>
-                                        <div className="text-xl font-black text-slate-800">{fuel.price}</div>
-                                        <div className={`text - [10px] font - bold mt - 1 ${fuel.trend === 'up' ? 'text-red-500' : 'text-green-500'} flex items - center justify - center gap - 1`}>
-                                            {fuel.trend === 'up' ? <TrendingUp size={12} /> : fuel.trend === 'down' ? <TrendingDown size={12} /> : <Minus size={12} />}
-                                            {fuel.trend === 'up' ? 'Rising' : fuel.trend === 'down' ? 'Falling' : 'Stable'}
+                {trafficAlerts.length === 0 ? (
+                    <EmptyState
+                        className="mt-3"
+                        icon={AlertTriangle}
+                        title="No alerts reported"
+                        description="There are no traffic advisories for Kochi at the moment."
+                    />
+                ) : (
+                    <ul className="mt-3 space-y-2.5">
+                        {trafficAlerts.map((alert) => (
+                            <li
+                                key={alert.id}
+                                className="rounded-2xl border border-line bg-surface p-3.5 shadow-e1"
+                            >
+                                <div className="flex items-start gap-2.5">
+                                    <span
+                                        className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${alert.severity === 'high'
+                                                ? 'bg-cat-emergency'
+                                                : alert.severity === 'medium'
+                                                    ? 'bg-cat-places'
+                                                    : 'bg-success'
+                                            }`}
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-baseline justify-between gap-2">
+                                            <h3 className="text-[15px] font-bold text-foreground">
+                                                {alert.location}
+                                            </h3>
+                                            <span className="shrink-0 text-[11px] text-faint">
+                                                {alert.created_at
+                                                    ? formatRelative(
+                                                        alert.created_at,
+                                                    )
+                                                    : alert.time}
+                                            </span>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </GlassCard>
-
-                    </div>
-
-                    {/* Right Column: Traffic Alerts */}
-                    <div className="lg:col-span-1">
-                        <GlassCard className="h-full">
-                            <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                    <AlertTriangle className="text-red-500" size={24} /> Traffic Alerts
-                                </h2>
-                                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                            </div>
-
-                            <div className="space-y-4">
-                                {displayTraffic.map((alert) => (
-                                    <div key={alert.id} className="relative pl-4 border-l-2 border-slate-200 pb-4 last:pb-0 last:border-0">
-                                        <div className={`absolute - left - [5px] top - 1 w - 2.5 h - 2.5 rounded - full border - 2 border - white ${alert.severity === 'high' ? 'bg-red-500' : alert.severity === 'medium' ? 'bg-orange-500' : 'bg-green-500'
-                                            } `}></div>
-
-                                        <div className="flex justify-between items-start">
-                                            <h4 className="font-bold text-slate-800 text-sm">{alert.location}</h4>
-                                            <span className="text-[10px] text-slate-400 font-medium">{alert.time}</span>
-                                        </div>
-
-                                        <div className={`inline - block px - 2 py - 0.5 rounded text - [10px] font - bold uppercase tracking - wide mt - 1 mb - 1 ${alert.severity === 'high' ? 'bg-red-50 text-red-600' : alert.severity === 'medium' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'
-                                            } `}>
+                                        <span
+                                            className={`mt-1 inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${alert.severity === 'high'
+                                                    ? 'bg-cat-emergency-soft text-cat-emergency'
+                                                    : alert.severity ===
+                                                        'medium'
+                                                        ? 'bg-cat-places-soft text-cat-places'
+                                                        : 'bg-success-soft text-success'
+                                                }`}
+                                        >
                                             {alert.status}
-                                        </div>
-
-                                        <p className="text-xs text-slate-500 leading-relaxed">
+                                        </span>
+                                        <p className="mt-1.5 text-xs leading-relaxed text-muted">
                                             {alert.details}
                                         </p>
                                     </div>
-                                ))}
-                            </div>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                )}
 
-                            <button className="w-full mt-6 py-3 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2">
-                                <Map size={14} /> View Live Traffic Map
-                            </button>
-                        </GlassCard>
-                    </div>
-
-                </div>
-            </main>
+                {/* Was a button with no handler. */}
+                <a
+                    href="https://www.google.com/maps/@9.9312,76.2673,13z/data=!5m1!1e1"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="press mt-3 flex h-12 items-center justify-center gap-2 rounded-xl border border-line bg-surface text-sm font-semibold text-foreground shadow-e1"
+                >
+                    <MapIcon size={16} />
+                    Open live traffic map
+                    <ExternalLink size={14} className="text-faint" />
+                </a>
+            </section>
         </div>
     );
 }

@@ -4,13 +4,17 @@ import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import html2canvas from 'html2canvas';
 import { supabase } from '@/lib/supabase';
-import { Header } from '@/components/Header';
 import DateEditor from '@/components/date-planner/DateEditor';
 import VisualSheet from '@/components/date-planner/VisualSheet';
 import PlanList from '@/components/date-planner/PlanList';
 import { useAuth } from '@/lib/auth-context';
 import { ShareModal } from '@/components/ui/ShareModal';
-import { Share2 } from 'lucide-react';
+import { Notice } from '@/components/ui/Notice';
+import { Sheet } from '@/components/ui/Sheet';
+import { Button, ButtonLink } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { Heart } from 'lucide-react';
 
 // Default stickers
 const stickerImages = [
@@ -40,9 +44,15 @@ interface Sticker {
 function DatePlannerContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const planId = searchParams.get('id');
     const action = searchParams.get('action');
+    // Inline feedback replaces the alert() calls this page used for every
+    // save, publish, upload and delete outcome.
+    const [feedback, setFeedback] = useState<
+        { tone: 'success' | 'error'; text: string } | null
+    >(null);
+    const [confirmDelete, setConfirmDelete] = useState(false);
 
     const [title, setTitle] = useState("The Evening Plan");
     const [stops, setStops] = useState([
@@ -139,7 +149,7 @@ function DatePlannerContent() {
         if (!file) return;
 
         if (!file.type.startsWith("image/")) {
-            alert("Please upload an image file.");
+            setFeedback({ tone: 'error', text: 'Please choose an image file.' });
             return;
         }
 
@@ -163,11 +173,14 @@ function DatePlannerContent() {
             if (data.secure_url) {
                 addSticker(data.secure_url);
             } else {
-                alert('Upload failed: No URL received.');
+                setFeedback({ tone: 'error', text: 'Upload failed. Try again.' });
             }
         } catch (error) {
             console.error('Error uploading sticker:', error);
-            alert('Failed to upload sticker. Please check your connection.');
+            setFeedback({
+                tone: 'error',
+                text: 'Could not upload that sticker. Check your connection.',
+            });
         }
 
         e.target.value = ""; // Reset input
@@ -202,15 +215,19 @@ function DatePlannerContent() {
             link.click();
         }).catch(err => {
             console.error("Capture failed", err);
-            alert("Could not create download. Try again.");
+            setFeedback({
+                tone: 'error',
+                text: 'Could not create the image. Try again.',
+            });
         });
     };
 
     const savePlan = async (isPublic: boolean) => {
         setIsSaving(true);
+        setFeedback(null);
         try {
             if (!user) {
-                alert("You must be logged in to save plans.");
+                router.push('/login?redirect=/date-planner');
                 setIsSaving(false);
                 return;
             }
@@ -247,11 +264,14 @@ function DatePlannerContent() {
                     // Update URL without reload
                     router.push(`/date-planner?id=${newId}`);
                 }
-                alert(isPublic ? "Plan published successfully!" : "Plan saved successfully!");
+                setFeedback({
+                    tone: 'success',
+                    text: isPublic ? 'Plan published.' : 'Plan saved.',
+                });
             }
         } catch (error) {
             console.error("Save error:", error);
-            alert("Failed to save plan.");
+            setFeedback({ tone: 'error', text: 'Could not save your plan.' });
         } finally {
             setIsSaving(false);
         }
@@ -263,8 +283,6 @@ function DatePlannerContent() {
 
     const deletePlan = async () => {
         if (!planId) return;
-        if (!confirm("Are you sure you want to delete this plan? This action cannot be undone.")) return;
-
         try {
             const { error } = await supabase
                 .from('date_plans')
@@ -273,78 +291,83 @@ function DatePlannerContent() {
 
             if (error) throw error;
 
+            setConfirmDelete(false);
             router.push('/date-planner');
         } catch (error) {
             console.error("Delete error:", error);
-            alert("Failed to delete plan.");
+            setConfirmDelete(false);
+            setFeedback({ tone: 'error', text: 'Could not delete this plan.' });
         }
     };
 
     const showEditor = planId || action === 'create';
 
     if (!showEditor) {
+        // Wait for Firebase before deciding whether this visitor is signed
+        // in, otherwise the sign-in prompt flashes for logged-in users.
+        if (authLoading) {
+            return (
+                <div className="page-x mx-auto w-full max-w-3xl space-y-3 pt-6">
+                    <Skeleton className="h-9 w-48" />
+                    <Skeleton className="h-32 rounded-2xl" />
+                </div>
+            );
+        }
+
         return (
-            <div className="min-h-screen bg-[#f5f7fa] font-sans text-[#2c3e50]">
-                <Header />
-                <div className="p-4 md:p-10">
-                    {user ? (
+            <div className="mx-auto w-full max-w-4xl pb-10">
+                {user ? (
+                    <div className="page-x pt-5">
                         <PlanList
                             userId={user.uid}
                             onCreateNew={() => router.push('/date-planner?action=create')}
                             onSelectPlan={(id) => router.push(`/date-planner?id=${id}`)}
                         />
-                    ) : (
-                        <div className="text-center mt-20">
-                            <h2 className="text-2xl font-bold mb-4">Date Planner</h2>
-                            <p className="mb-4">Please sign in to view and create your date plans.</p>
-                            <button
-                                onClick={() => router.push('/profile')}
-                                className="bg-pink-500 text-white px-6 py-2 rounded-lg hover:bg-pink-600 transition-colors"
-                            >
-                                Sign In
-                            </button>
-                        </div>
-                    )}
-                </div>
+                    </div>
+                ) : (
+                    <div className="page-x pt-10">
+                        <EmptyState
+                            icon={Heart}
+                            title="Date planner"
+                            description="Sign in to build and save an evening out in Kochi."
+                            action={
+                                <ButtonLink href="/login?redirect=/date-planner">
+                                    Sign in
+                                </ButtonLink>
+                            }
+                        />
+                    </div>
+                )}
             </div>
         );
     }
 
     if (loadError) {
         return (
-            <div className="min-h-screen bg-[#f5f7fa] font-sans text-[#2c3e50]">
-                <Header />
-                <div className="p-10 text-center">
-                    <div className="bg-red-50 text-red-600 p-4 rounded-lg inline-block">
-                        {loadError}
-                    </div>
-                    <div className="mt-4">
-                        <button
-                            onClick={() => router.push('/date-planner')}
-                            className="text-pink-500 hover:underline"
-                        >
-                            Back to Plans
-                        </button>
-                    </div>
-                </div>
+            <div className="page-x mx-auto w-full max-w-md pt-10">
+                <EmptyState
+                    icon={Heart}
+                    title="Plan unavailable"
+                    description={loadError}
+                    action={
+                        <ButtonLink href="/date-planner">
+                            Back to plans
+                        </ButtonLink>
+                    }
+                />
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-[#f5f7fa] font-sans text-[#2c3e50]">
-            <Header />
-
-            <div className="p-4 md:p-10 flex flex-col lg:flex-row gap-8 justify-center items-start max-w-7xl mx-auto">
-                <div className="w-full mb-4 lg:hidden">
-                    <button
-                        onClick={() => router.push('/date-planner')}
-                        className="text-sm text-slate-500 hover:text-slate-800 flex items-center gap-1"
-                    >
-                        ← Back to Plans
-                    </button>
+        <div className="mx-auto w-full max-w-7xl pb-10">
+            {feedback && (
+                <div className="page-x pt-4">
+                    <Notice tone={feedback.tone}>{feedback.text}</Notice>
                 </div>
+            )}
 
+            <div className="page-x flex flex-col items-start justify-center gap-6 pt-4 lg:flex-row">
                 {/* Left: Editor */}
                 <DateEditor
                     stops={stops}
@@ -357,7 +380,7 @@ function DatePlannerContent() {
                     onDownload={downloadSheet}
                     onShare={handleShare}
                     onSave={savePlan}
-                    onDelete={planId ? deletePlan : undefined}
+                    onDelete={planId ? () => setConfirmDelete(true) : undefined}
                     isSaving={isSaving}
                 />
 
@@ -372,6 +395,30 @@ function DatePlannerContent() {
                     sheetRef={sheetRef}
                 />
             </div>
+
+            {/* Replaces window.confirm() */}
+            <Sheet
+                open={confirmDelete}
+                onClose={() => setConfirmDelete(false)}
+                title="Delete this plan?"
+            >
+                <p className="text-sm leading-relaxed text-muted">
+                    <span className="font-semibold text-foreground">{title}</span>{' '}
+                    will be removed permanently. This cannot be undone.
+                </p>
+                <div className="mt-5 flex gap-2">
+                    <Button
+                        variant="secondary"
+                        block
+                        onClick={() => setConfirmDelete(false)}
+                    >
+                        Keep it
+                    </Button>
+                    <Button variant="danger" block onClick={deletePlan}>
+                        Delete
+                    </Button>
+                </div>
+            </Sheet>
 
             {/* Share Modal */}
             {shareConfig.isOpen && (
@@ -394,7 +441,14 @@ function DatePlannerContent() {
 
 export default function DatePlannerPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+        <Suspense
+            fallback={
+                <div className="page-x mx-auto w-full max-w-3xl space-y-3 pt-6">
+                    <Skeleton className="h-9 w-48" />
+                    <Skeleton className="h-32 rounded-2xl" />
+                </div>
+            }
+        >
             <DatePlannerContent />
         </Suspense>
     );

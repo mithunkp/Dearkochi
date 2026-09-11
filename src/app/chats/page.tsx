@@ -1,12 +1,23 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import Image from 'next/image';
-import { UserDisplay } from '@/components/UserDisplay';
+import { MessageCircle, ChevronRight } from 'lucide-react';
+
+import { SafeImage } from '@/components/ui/SafeImage';
+import { EmptyState, ErrorState } from '@/components/ui/EmptyState';
+import { Skeleton, LoadingAnnouncer } from '@/components/ui/Skeleton';
+import { ButtonLink } from '@/components/ui/Button';
+import { formatRelative } from '@/lib/format';
+
+type ChatProfile = {
+    full_name: string | null;
+    email: string | null;
+    nickname: string | null;
+    flair: string | null;
+};
 
 type ChatListItem = {
     id: number;
@@ -19,189 +30,234 @@ type ChatListItem = {
         price: number | null;
         image_url: string | null;
     } | null;
-    buyer_profile: {
-        full_name: string | null;
-        email: string | null;
-        nickname: string | null;
-        flair: string | null;
-    } | null;
-    seller_profile: {
-        full_name: string | null;
-        email: string | null;
-        nickname: string | null;
-        flair: string | null;
-    } | null;
-    last_message?: {
-        content: string;
-        created_at: string;
-    };
+    buyer_profile: ChatProfile | null;
+    seller_profile: ChatProfile | null;
+    last_message?: { content: string; created_at: string };
 };
 
 export default function ChatsPage() {
-    const { user } = useAuth();
-    const router = useRouter();
+    const { user, loading: authLoading } = useAuth();
     const [chats, setChats] = useState<ChatListItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (!user) {
-            router.push('/');
-            return;
-        }
-        fetchChats();
-    }, [user]);
-
-    const fetchChats = async () => {
+    const fetchChats = useCallback(async () => {
         if (!user) return;
-
+        setError(null);
         try {
-            const { data, error } = await supabase
+            const { data, error: dbError } = await supabase
                 .from('chats')
-                .select(`
-                    *,
-                    classified_ads (
-                        title,
-                        price,
-                        image_url
-                    ),
-                    buyer_profile:profiles!chats_buyer_id_fkey (
-                        full_name,
-                        email,
-                        nickname,
-                        flair
-                    ),
-                    seller_profile:profiles!chats_seller_id_fkey (
-                        full_name,
-                        email,
-                        nickname,
-                        flair
-                    )
-                `)
+                .select(
+                    `*,
+                     classified_ads ( title, price, image_url ),
+                     buyer_profile:profiles!chats_buyer_id_fkey ( full_name, email, nickname, flair ),
+                     seller_profile:profiles!chats_seller_id_fkey ( full_name, email, nickname, flair )`,
+                )
                 .or(`buyer_id.eq.${user.uid},seller_id.eq.${user.uid}`)
                 .order('created_at', { ascending: false });
 
-            if (error) throw error;
+            if (dbError) throw dbError;
 
-            // Fetch last message for each chat
-            const chatsWithMessages = await Promise.all(
-                (data || []).map(async (chat) => {
-                    const { data: messages } = await supabase
-                        .from('messages')
-                        .select('content, created_at')
-                        .eq('chat_id', chat.id)
-                        .order('created_at', { ascending: false })
-                        .limit(1);
+            const rows = (data ?? []) as ChatListItem[];
 
-                    return {
-                        ...chat,
-                        last_message: messages?.[0]
-                    };
-                })
-            );
+            // One query for all messages rather than one per chat. Rows come
+            // back newest-first, so the first hit per chat is its latest.
+            const ids = rows.map((c) => c.id);
+            const latest = new Map<number, { content: string; created_at: string }>();
 
-            setChats(chatsWithMessages);
-        } catch (error) {
-            console.error('Error fetching chats:', error);
+            if (ids.length > 0) {
+                const { data: messages } = await supabase
+                    .from('messages')
+                    .select('chat_id, content, created_at')
+                    .in('chat_id', ids)
+                    .order('created_at', { ascending: false });
+
+                for (const m of (messages ?? []) as {
+                    chat_id: number;
+                    content: string;
+                    created_at: string;
+                }[]) {
+                    if (!latest.has(m.chat_id)) {
+                        latest.set(m.chat_id, {
+                            content: m.content,
+                            created_at: m.created_at,
+                        });
+                    }
+                }
+            }
+
+            const withMessages = rows.map((c) => ({
+                ...c,
+                last_message: latest.get(c.id),
+            }));
+
+            // Most recently active conversation first, which is what a
+            // messages list is expected to do.
+            withMessages.sort((a, b) => {
+                const at = a.last_message?.created_at ?? a.created_at;
+                const bt = b.last_message?.created_at ?? b.created_at;
+                return new Date(bt).getTime() - new Date(at).getTime();
+            });
+
+            setChats(withMessages);
+        } catch (err) {
+            console.error('Error fetching chats:', err);
+            setError('Could not load your messages.');
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
 
-    if (loading) return <div className="p-8 text-center">Loading chats...</div>;
+    useEffect(() => {
+        if (user) {
+            fetchChats();
+        } else if (!authLoading) {
+            setLoading(false);
+        }
+    }, [user, authLoading, fetchChats]);
+
+    if (authLoading || (loading && user)) {
+        return (
+            <div className="page-x mx-auto w-full max-w-2xl space-y-2.5 pt-6">
+                <LoadingAnnouncer label="Loading messages" />
+                {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-20 rounded-2xl" />
+                ))}
+            </div>
+        );
+    }
+
+    // The old page called router.push('/') whenever `user` was falsy — which
+    // includes the moment before Firebase resolves — so signed-in visitors
+    // were bounced to the home page before their session loaded.
+    if (!user) {
+        return (
+            <div className="page-x mx-auto w-full max-w-md pt-10">
+                <EmptyState
+                    icon={MessageCircle}
+                    title="You're not signed in"
+                    description="Sign in to see your conversations."
+                    action={
+                        <ButtonLink href="/login?redirect=/chats">
+                            Sign in
+                        </ButtonLink>
+                    }
+                />
+            </div>
+        );
+    }
 
     return (
-        <div className="max-w-4xl mx-auto p-4 md:p-8">
-            <div className="mb-8 flex items-end justify-between">
-                <div>
-                    <Link href="/classified" className="text-slate-500 hover:text-slate-800 text-sm mb-2 inline-flex items-center gap-1 transition-colors">
-                        <span>←</span> Back to Classifieds
-                    </Link>
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">My Messages</h1>
-                </div>
+        <div className="mx-auto w-full max-w-2xl pb-10">
+            <div className="page-x pt-5">
+                <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
+                    Messages
+                </h1>
+                <p className="mt-1 text-sm text-muted">
+                    Conversations about classified listings.
+                </p>
             </div>
 
-            {chats.length === 0 ? (
-                <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-100 p-12 text-center">
-                    <div className="relative w-20 h-20 mb-6 mx-auto bg-slate-50 rounded-full flex items-center justify-center">
-                        <span className="text-4xl opacity-50">📬</span>
-                    </div>
-                    <h2 className="text-xl font-bold text-slate-800 mb-2">No messages yet</h2>
-                    <p className="text-slate-500 mb-8 max-w-sm mx-auto">
-                        Connect with sellers by clicking "Chat" on any classified ad. Your conversations will appear here.
-                    </p>
-                    <Link
-                        href="/classified"
-                        className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-full font-bold shadow-lg shadow-pink-200 hover:shadow-xl hover:scale-105 transition-all"
-                    >
-                        Browse Classifieds
-                    </Link>
-                </div>
-            ) : (
-                <div className="grid gap-3">
-                    {chats.map((chat) => {
-                        const otherUser = user?.uid === chat.buyer_id ? chat.seller_profile : chat.buyer_profile;
-                        const role = user?.uid === chat.buyer_id ? 'Buyer' : 'Seller';
+            <div className="page-x mt-5">
+                {error ? (
+                    <ErrorState description={error} onRetry={fetchChats} />
+                ) : chats.length === 0 ? (
+                    <EmptyState
+                        icon={MessageCircle}
+                        title="No messages yet"
+                        description="Tap Chat on any listing to start a conversation with the seller."
+                        action={
+                            <ButtonLink href="/classified">
+                                Browse classifieds
+                            </ButtonLink>
+                        }
+                    />
+                ) : (
+                    <ul className="dk-stagger space-y-2.5">
+                        {chats.map((chat, i) => {
+                            const isBuyer = user.uid === chat.buyer_id;
+                            const other = isBuyer
+                                ? chat.seller_profile
+                                : chat.buyer_profile;
+                            // Nickname only — matching UserDisplay, which
+                            // deliberately never exposes real names.
+                            const name = other?.nickname || 'Dear Kochi user';
 
-                        return (
-                            <Link
-                                key={chat.id}
-                                href={`/chats/${chat.id}`}
-                                className="group relative bg-white/70 hover:bg-white backdrop-blur-sm rounded-2xl p-4 shadow-sm hover:shadow-md border border-slate-200/60 hover:border-pink-200 transition-all duration-200 flex items-start gap-4"
-                            >
-                                {/* Ad Image */}
-                                <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-100 group-hover:border-pink-100 transition-colors">
-                                    {chat.classified_ads?.image_url ? (
-                                        <img
-                                            src={chat.classified_ads.image_url}
-                                            alt={chat.classified_ads.title || 'Ad'}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-slate-300">
-                                            📦
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="flex-1 min-w-0 pt-0.5">
-                                    <div className="flex justify-between items-start gap-2">
-                                        <h3 className="font-bold text-slate-900 truncate pr-2 group-hover:text-pink-600 transition-colors">
-                                            {otherUser?.nickname || otherUser?.full_name || 'User'}
-                                        </h3>
-                                        {chat.last_message && (
-                                            <span className="text-[10px] sm:text-xs font-medium text-slate-400 whitespace-nowrap bg-slate-50 px-2 py-0.5 rounded-full">
-                                                {new Date(chat.last_message.created_at).toLocaleDateString()}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${role === 'Buyer' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
-                                            {role}
+                            return (
+                                <li
+                                    key={chat.id}
+                                    style={
+                                        { '--dk-i': i } as React.CSSProperties
+                                    }
+                                >
+                                    <Link
+                                        href={`/chats/${chat.id}`}
+                                        className="press flex items-center gap-3 rounded-2xl border border-line bg-surface p-3 shadow-e1 hover:border-line-strong hover:shadow-e2"
+                                    >
+                                        <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-surface-2">
+                                            <SafeImage
+                                                src={
+                                                    chat.classified_ads
+                                                        ?.image_url
+                                                }
+                                                alt=""
+                                                sizes="56px"
+                                            />
                                         </span>
-                                        <span>•</span>
-                                        <span className="truncate">{chat.classified_ads?.title}</span>
-                                    </div>
 
-                                    {chat.last_message ? (
-                                        <p className="text-sm text-slate-600 truncate group-hover:text-slate-900 transition-colors">
-                                            {chat.last_message.content}
-                                        </p>
-                                    ) : (
-                                        <p className="text-sm text-slate-400 italic">No messages yet</p>
-                                    )}
-                                </div>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="flex items-baseline justify-between gap-2">
+                                                <span className="truncate text-[15px] font-bold text-foreground">
+                                                    {name}
+                                                </span>
+                                                {chat.last_message && (
+                                                    <span className="shrink-0 text-[11px] text-faint">
+                                                        {formatRelative(
+                                                            chat.last_message
+                                                                .created_at,
+                                                        )}
+                                                    </span>
+                                                )}
+                                            </span>
 
-                                <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 -mr-2">
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                    </svg>
-                                </div>
-                            </Link>
-                        );
-                    })}
-                </div>
-            )}
+                                            <span className="mt-0.5 flex items-center gap-1.5">
+                                                <span
+                                                    className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isBuyer
+                                                            ? 'bg-cat-transport-soft text-cat-transport'
+                                                            : 'bg-cat-places-soft text-cat-places'
+                                                        }`}
+                                                >
+                                                    {isBuyer
+                                                        ? 'Buying'
+                                                        : 'Selling'}
+                                                </span>
+                                                <span className="truncate text-[11px] text-muted">
+                                                    {chat.classified_ads
+                                                        ?.title ??
+                                                        'Listing removed'}
+                                                </span>
+                                            </span>
+
+                                            <span className="mt-1 block truncate text-[13px] text-muted">
+                                                {chat.last_message?.content ?? (
+                                                    <span className="italic text-faint">
+                                                        No messages yet
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </span>
+
+                                        <ChevronRight
+                                            size={17}
+                                            className="shrink-0 text-faint"
+                                        />
+                                    </Link>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+            </div>
         </div>
     );
 }

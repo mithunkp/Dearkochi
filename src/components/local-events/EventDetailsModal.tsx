@@ -3,10 +3,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
-import { LocalEvent } from '@/app/local-events/page';
+import type { LocalEvent } from '@/app/types';
 import { UserDisplay } from '@/components/UserDisplay';
-import { X, Send, Users, MapPin, Clock, Lock, AlertCircle, MoreVertical, Trash2, StopCircle, Zap, Check, UserPlus, MessageSquare } from 'lucide-react';
+import { X, Send, Users, MapPin, Clock, Lock, MoreVertical, Trash2, StopCircle, Zap, Check } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { Notice } from '@/components/ui/Notice';
+import { Sheet } from '@/components/ui/Sheet';
+import { Button } from '@/components/ui/Button';
 
 interface EventDetailsModalProps {
     event: LocalEvent;
@@ -55,6 +58,18 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
     const [pendingRequests, setPendingRequests] = useState<Participant[]>([]);
     const [myRequestStatus, setMyRequestStatus] = useState<'pending' | 'rejected' | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    // Inline feedback and confirmations, replacing alert/confirm/prompt.
+    const [notice, setNotice] = useState<
+        { tone: 'success' | 'error'; text: string } | null
+    >(null);
+    const [nicknameDraft, setNicknameDraft] = useState('');
+    const [needsNickname, setNeedsNickname] = useState(false);
+    const [pendingAction, setPendingAction] = useState<{
+        title: string;
+        body?: string;
+        label: string;
+        run: () => Promise<void> | void;
+    } | null>(null);
 
     // Compute access dynamically based on current state
     const canViewChat = !event.is_private || hasJoined || isCreator;
@@ -235,9 +250,11 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
         }
 
         try {
-            const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-            if (authError || !authUser) {
-                console.warn('User not authenticated:', authError?.message || 'No user found');
+            // Auth here is Firebase, not Supabase. This previously gated on
+            // supabase.auth.getUser(), which is always null because the app
+            // never creates a Supabase session — so the event chat silently
+            // returned early and no messages were ever displayed.
+            if (!user) {
                 return;
             }
 
@@ -397,16 +414,27 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
 
         // Check nickname again
         if (!userNickname) {
-            const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.uid).single();
+            const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.uid).maybeSingle();
             if (!profile?.nickname) {
-                const nick = prompt('Please set a nickname to join events:');
-                if (!nick || !nick.trim()) return;
-                const { error: updateError } = await supabase.from('profiles').update({ nickname: nick.trim() }).eq('id', user.uid);
-                if (updateError) {
-                    alert('Failed to set nickname.');
+                const nick = nicknameDraft.trim();
+                if (!nick) {
+                    setNeedsNickname(true);
+                    setNotice({
+                        tone: 'error',
+                        text: 'Choose a nickname before joining events.',
+                    });
                     return;
                 }
-                setUserNickname(nick.trim());
+                const { error: updateError } = await supabase
+                    .from('profiles')
+                    .upsert({ id: user.uid, email: user.email, nickname: nick });
+                if (updateError) {
+                    console.error('Failed to set nickname:', updateError);
+                    setNotice({ tone: 'error', text: 'Could not save that nickname.' });
+                    return;
+                }
+                setUserNickname(nick);
+                setNeedsNickname(false);
             } else {
                 setUserNickname(profile.nickname);
             }
@@ -431,21 +459,21 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 onUpdate();
             } else {
                 setMyRequestStatus('pending');
-                alert('Request sent! Waiting for approval.');
+                setNotice({ tone: 'success', text: 'Request sent. Waiting for approval.' });
             }
         } else {
-            alert('Failed to join/request. Please try again.');
+            setNotice({ tone: 'error', text: 'Could not join. Please try again.' });
         }
     };
 
     const handleJoinClick = () => {
         if (!user) {
-            alert('Please sign in to join events');
+            setNotice({ tone: 'error', text: 'Please sign in to join events.' });
             return;
         }
 
         if (isEventFull && !isCreator) {
-            alert('This event is full.');
+            setNotice({ tone: 'error', text: 'This event is full.' });
             return;
         }
 
@@ -464,7 +492,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
             .eq('user_id', userId);
 
         if (error) {
-            alert('Failed to approve user');
+            setNotice({ tone: 'error', text: 'Could not approve that request.' });
         } else {
             // Refresh lists
             fetchParticipants();
@@ -473,8 +501,15 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
     };
 
     const handleReject = async (userId: string) => {
-        if (!confirm('Reject this request?')) return;
+        setPendingAction({
+            title: 'Reject this request?',
+            body: 'They will not be able to join this event.',
+            label: 'Reject',
+            run: () => doRejectRequest(userId),
+        });
+    };
 
+    const doRejectRequest = async (userId: string) => {
         const { error } = await supabase
             .from('event_participants')
             .update({ status: 'rejected' })
@@ -482,7 +517,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
             .eq('user_id', userId);
 
         if (error) {
-            alert('Failed to reject user');
+            setNotice({ tone: 'error', text: 'Could not reject that request.' });
         } else {
             fetchPendingRequests();
         }
@@ -490,28 +525,48 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
 
     const handleLeave = async () => {
         if (!user) return;
-        if (confirm('Are you sure you want to leave?')) {
-            const { error } = await supabase.from('event_participants').delete().eq('event_id', event.id).eq('user_id', user.uid);
-            if (!error) {
-                setHasJoined(false);
-                onUpdate();
-            }
-        }
+        setPendingAction({
+            title: 'Leave this event?',
+            body: 'You can join again later if there is still room.',
+            label: 'Leave',
+            run: async () => {
+                const { error } = await supabase
+                    .from('event_participants')
+                    .delete()
+                    .eq('event_id', event.id)
+                    .eq('user_id', user.uid);
+                if (!error) {
+                    setHasJoined(false);
+                    onUpdate();
+                }
+            },
+        });
     };
 
     const handleDeleteEvent = async () => {
         if (!user || user.uid !== event.creator_id) return;
-        if (confirm('Are you sure you want to delete this event? This cannot be undone.')) {
-            const { error } = await supabase.from('local_events').delete().eq('id', event.id);
+        setPendingAction({
+            title: 'Delete this event?',
+            body: 'It will be removed for everyone. This cannot be undone.',
+            label: 'Delete',
+            run: async () => {
+                const { error } = await supabase
+                    .from('local_events')
+                    .delete()
+                    .eq('id', event.id);
 
-            if (error) {
-                console.error('Error deleting event:', error);
-                alert('Failed to delete event');
-            } else {
-                onUpdate(); // Should trigger a refresh in parent/list
-                onClose();  // Close the modal
-            }
-        }
+                if (error) {
+                    console.error('Error deleting event:', error);
+                    setNotice({
+                        tone: 'error',
+                        text: 'Could not delete this event.',
+                    });
+                } else {
+                    onUpdate();
+                    onClose();
+                }
+            },
+        });
     };
 
     const [isSending, setIsSending] = useState(false);
@@ -560,30 +615,48 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
 
         } catch (error) {
             console.error('Error sending message:', error);
-            alert('Failed to send message. Please try again.');
+            setNotice({ tone: 'error', text: 'Message not sent. Try again.' });
         } finally {
             setIsSending(false);
         }
     };
 
     const handleCloseEvent = async () => {
-        if (confirm('Close this event? No one new will be able to join.')) {
-            await supabase.from('local_events').update({ is_closed: true }).eq('id', event.id);
-            onUpdate();
-            onClose();
-        }
+        setPendingAction({
+            title: 'Close this event?',
+            body: 'No one new will be able to join.',
+            label: 'Close event',
+            run: async () => {
+                await supabase
+                    .from('local_events')
+                    .update({ is_closed: true })
+                    .eq('id', event.id);
+                onUpdate();
+                onClose();
+            },
+        });
     };
 
     const handleRemoveUser = async (userId: string) => {
-        if (confirm('Remove this user from the event?')) {
-            await supabase.from('event_participants').update({ status: 'removed' }).eq('event_id', event.id).eq('user_id', userId);
-            fetchParticipants();
-        }
+        setPendingAction({
+            title: 'Remove this person?',
+            body: 'They will no longer be a participant.',
+            label: 'Remove',
+            run: async () => {
+                await supabase
+                    .from('event_participants')
+                    .update({ status: 'removed' })
+                    .eq('event_id', event.id)
+                    .eq('user_id', userId);
+                fetchParticipants();
+            },
+        });
     };
 
     if (!isOpen) return null;
 
     return (
+        <>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-white/95 backdrop-blur-xl rounded-[32px] w-full max-w-4xl h-[85vh] overflow-hidden shadow-2xl flex flex-col md:flex-row animate-slide-in border border-white/20 ring-1 ring-black/5">
 
@@ -748,7 +821,7 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                                                 </div>
                                                 {p.request_message && (
                                                     <div className="text-sm text-slate-600 bg-white/50 p-2 rounded-lg italic">
-                                                        "{p.request_message}"
+                                                        &ldquo;{p.request_message}&rdquo;
                                                     </div>
                                                 )}
                                             </div>
@@ -871,12 +944,55 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 </div>
             </div>
 
+            {/* Feedback for actions taken outside the join dialog. */}
+            {notice && !showJoinModal && (
+                <div className="absolute inset-x-4 top-4 z-[55]">
+                    <button
+                        type="button"
+                        onClick={() => setNotice(null)}
+                        className="block w-full text-left"
+                        aria-label="Dismiss message"
+                    >
+                        <Notice tone={notice.tone}>{notice.text}</Notice>
+                    </button>
+                </div>
+            )}
+
             {/* Join Request Modal */}
             {showJoinModal && (
                 <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-scale-in">
                         <h3 className="text-lg font-bold text-slate-800 mb-2">Request to Join</h3>
                         <p className="text-sm text-slate-500 mb-4">This event requires approval. Add a message for the host.</p>
+
+                        {notice && (
+                            <div className="mb-3">
+                                <Notice tone={notice.tone}>{notice.text}</Notice>
+                            </div>
+                        )}
+
+                        {/* Replaces the window.prompt() that used to ask for
+                            a nickname before joining. */}
+                        {needsNickname && (
+                            <div className="mb-3">
+                                <label
+                                    htmlFor="join-nickname"
+                                    className="mb-1.5 block text-sm font-medium text-slate-700"
+                                >
+                                    Choose a nickname
+                                </label>
+                                <input
+                                    id="join-nickname"
+                                    type="text"
+                                    value={nicknameDraft}
+                                    onChange={(e) => setNicknameDraft(e.target.value)}
+                                    maxLength={30}
+                                    placeholder="What should people call you?"
+                                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-base focus:border-purple-500 focus:outline-none"
+                                />
+                            </div>
+                        )}
+
                         <form onSubmit={handleJoinRequest}>
                             <textarea
                                 className="w-full p-3 bg-slate-50 rounded-xl border-transparent focus:bg-white focus:border-purple-500 focus:ring-0 transition-all text-sm mb-4 resize-none"
@@ -907,5 +1023,38 @@ export function EventDetailsModal({ event, isOpen, onClose, onUpdate }: EventDet
                 </div>
             )}
         </div>
+            {/* Replaces window.confirm() */}
+            <Sheet
+                open={!!pendingAction}
+                onClose={() => setPendingAction(null)}
+                title={pendingAction?.title}
+            >
+                {pendingAction?.body && (
+                    <p className="text-sm leading-relaxed text-muted">
+                        {pendingAction.body}
+                    </p>
+                )}
+                <div className="mt-5 flex gap-2">
+                    <Button
+                        variant="secondary"
+                        block
+                        onClick={() => setPendingAction(null)}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="danger"
+                        block
+                        onClick={async () => {
+                            const action = pendingAction;
+                            setPendingAction(null);
+                            await action?.run();
+                        }}
+                    >
+                        {pendingAction?.label}
+                    </Button>
+                </div>
+            </Sheet>
+        </>
     );
 }

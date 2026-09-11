@@ -36,9 +36,11 @@ function LocationMarker({
     accuracy?: number | null;
     draggable?: boolean;
 }) {
-    const markerRef = useRef<any>(null);
+    const markerRef = useRef<L.Marker | null>(null);
 
-    const map = useMapEvents({
+    // Registers click handling on the parent map; the returned instance
+    // is not needed here.
+    useMapEvents({
         click(e) {
             onLocationSelect(e.latlng.lat, e.latlng.lng);
         },
@@ -98,18 +100,23 @@ export default function MapComponent({
     draggable = false
 }: MapComponentProps) {
     const defaultCenter: [number, number] = [9.9312, 76.2673];
-    const [position, setPosition] = useState<[number, number] | null>(
+
+    // Locally chosen point, used only while no `center` is supplied.
+    const [picked, setPicked] = useState<[number, number] | null>(
         initialLat && initialLng ? [initialLat, initialLng] : null
     );
 
-    useEffect(() => {
-        if (center) {
-            setPosition(center);
-        }
-    }, [center]);
+    /*
+     * Derived rather than copied into state by an effect. The previous
+     * version called setPosition inside useEffect on every `center` change,
+     * which triggers a second render pass for each map move (the
+     * react-hooks/set-state-in-effect warning). Callers always update
+     * `center` when a point is chosen, so it is the source of truth.
+     */
+    const position = center ?? picked;
 
     const handleSelect = (lat: number, lng: number) => {
-        setPosition([lat, lng]);
+        setPicked([lat, lng]);
         onLocationSelect(lat, lng);
     };
 

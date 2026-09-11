@@ -1,13 +1,24 @@
 import React from 'react';
+import { cn } from '@/lib/cn';
 
 interface GlassCardProps {
     children: React.ReactNode;
     className?: string;
 }
 
+/**
+ * Retained because 16 pages still render it. Now a solid token-driven
+ * surface rather than a hardcoded white/70 blur, so it follows the theme
+ * and costs nothing to composite on mobile.
+ */
 export function GlassCard({ children, className = '' }: GlassCardProps) {
     return (
-        <div className={`bg-white/70 backdrop-blur-xl border border-white/40 rounded-[20px] p-5 shadow-[0_4px_24px_rgba(0,0,0,0.06)] ${className}`}>
+        <div
+            className={cn(
+                'rounded-2xl border border-line bg-surface p-4 shadow-e1',
+                className,
+            )}
+        >
             {children}
         </div>
     );

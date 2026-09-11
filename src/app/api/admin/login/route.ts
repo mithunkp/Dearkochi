@@ -1,46 +1,73 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+    ADMIN_COOKIE,
+    SESSION_MAX_AGE,
+    adminCredentials,
+    createSessionToken,
+    usingDefaultCredentials,
+} from '@/lib/admin-auth';
+
+/** Length-independent string comparison for secrets. */
+function safeEqual(a: string, b: string) {
+    if (a.length !== b.length) return false;
+    let mismatch = 0;
+    for (let i = 0; i < a.length; i++) {
+        mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return mismatch === 0;
+}
 
 export async function POST(request: NextRequest) {
     try {
-        const body = await request.json();
-        const { username, password } = body;
+        const { username, password } = await request.json();
 
-        console.log('API Route: Login attempt for username:', username);
-
-        if (username !== 'admin') {
+        if (typeof username !== 'string' || typeof password !== 'string') {
             return NextResponse.json(
-                { success: false, error: 'Invalid username' },
-                { status: 401 }
+                { success: false, error: 'Invalid request' },
+                { status: 400 },
             );
         }
 
-        if (password !== 'p@ssw0rd@dmin') {
+        const expected = adminCredentials();
+
+        // Evaluate both, then combine: returning early on a bad username
+        // would confirm which accounts exist, and the old code reported
+        // "Invalid username" and "Invalid password" separately.
+        const userOk = safeEqual(username, expected.username);
+        const passOk = safeEqual(password, expected.password);
+
+        if (!userOk || !passOk) {
             return NextResponse.json(
-                { success: false, error: 'Invalid password' },
-                { status: 401 }
+                { success: false, error: 'Incorrect username or password' },
+                { status: 401 },
             );
         }
 
-        console.log('API Route: Login successful, setting cookie');
+        if (usingDefaultCredentials()) {
+            console.warn(
+                'Admin signed in with the default credentials committed to the repository. ' +
+                'Set ADMIN_USERNAME, ADMIN_PASSWORD and ADMIN_SESSION_SECRET.',
+            );
+        }
 
         const response = NextResponse.json({ success: true });
 
-        // Set cookie directly on response
-        // minimal options for debugging
-        response.cookies.set('admin_session', 'true', {
+        response.cookies.set(ADMIN_COOKIE, await createSessionToken(), {
             path: '/',
-            maxAge: 60 * 60 * 24, // 1 day
-            httpOnly: false, // False for now so we can see it in client debug
-            secure: false,
-            sameSite: 'lax'
+            maxAge: SESSION_MAX_AGE,
+            // Was false, leaving the session readable by any script on the
+            // page and transmittable over plain HTTP.
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
         });
 
         return response;
     } catch (error) {
-        console.error('API Route error:', error);
+        console.error('Admin login error:', error);
         return NextResponse.json(
             { success: false, error: 'Server error' },
-            { status: 500 }
+            { status: 500 },
         );
     }
 }

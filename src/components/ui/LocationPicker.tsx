@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { Notice } from '@/components/ui/Notice';
 import dynamic from 'next/dynamic';
 import { MapPin, Search, Navigation, Loader2 } from 'lucide-react';
 
@@ -37,6 +38,9 @@ export default function LocationPicker({ onLocationSelect, initialLat, initialLn
     const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
     const [accuracy, setAccuracy] = useState<number | null>(null);
     const [markerDraggable, setMarkerDraggable] = useState(false);
+    // Inline replacement for the alert() calls this component used for
+    // every geolocation and search failure.
+    const [locationError, setLocationError] = useState<string | null>(null);
     const debounceTimer = useRef<NodeJS.Timeout | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const watchId = useRef<number | null>(null);
@@ -153,6 +157,7 @@ export default function LocationPicker({ onLocationSelect, initialLat, initialLn
 
         setIsSearching(true);
         setShowSuggestions(false);
+        setLocationError(null);
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
             const data = await res.json();
@@ -163,7 +168,7 @@ export default function LocationPicker({ onLocationSelect, initialLat, initialLn
                 setMapCenter([newLat, newLng]);
                 onLocationSelect(newLat, newLng, display_name);
             } else {
-                alert('Location not found');
+                setLocationError('No place matched that search.');
             }
         } catch (error) {
             console.error('Search error:', error);
@@ -250,7 +255,7 @@ export default function LocationPicker({ onLocationSelect, initialLat, initialLn
                     } else if (error.code === 3) {
                         errorMessage = 'Location request timed out. Please try again.';
                     }
-                    alert(errorMessage);
+                    setLocationError(errorMessage);
                     setIsSearching(false);
                     setTrackingStatus('');
                 },
@@ -261,13 +266,13 @@ export default function LocationPicker({ onLocationSelect, initialLat, initialLn
                 }
             );
         } else {
-            alert('Geolocation is not supported by your browser');
+            setLocationError('This browser cannot share your location.');
         }
     };
 
     const handleMapClick = async (lat: number, lng: number) => {
         if (restrictToCurrentLocation) {
-            alert('For Live events, please use "Current Location" only.');
+            setLocationError('Live events must use your current location.');
             return;
         }
 
@@ -280,13 +285,16 @@ export default function LocationPicker({ onLocationSelect, initialLat, initialLn
             const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
             const data = await res.json();
             onLocationSelect(lat, lng, data.display_name);
-        } catch (e) {
+        } catch {
             onLocationSelect(lat, lng);
         }
     };
 
     return (
         <div className="space-y-3">
+            {locationError && (
+                <Notice tone="error">{locationError}</Notice>
+            )}
             <div className="flex gap-2">
                 {!restrictToCurrentLocation && (
                     <div className="flex-1 relative">

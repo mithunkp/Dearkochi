@@ -1,21 +1,26 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme, type ThemePreference } from '@/lib/theme-context';
 import { supabase } from '@/lib/supabase';
-import { Header } from '@/components/Header';
-import { GlassCard } from '@/components/ui/GlassCard';
 import {
-    ArrowLeft,
     Save,
-    User,
+    User as UserIcon,
     Sparkles,
     FileText,
     Mail,
-    CheckCircle
+    Sun,
+    Moon,
+    MonitorSmartphone,
+    X,
 } from 'lucide-react';
-import Link from 'next/link';
+
+import { Button, ButtonLink } from '@/components/ui/Button';
+import { Notice } from '@/components/ui/Notice';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { PUBLIC_FLAIRS, SPECIAL_FLAIRS } from '@/lib/flairs';
 
 type Profile = {
     id: string;
@@ -29,33 +34,46 @@ type Profile = {
     flair_color?: string | null;
 };
 
-import { PUBLIC_FLAIRS, isSpecialFlair, SPECIAL_FLAIRS } from '@/lib/flairs';
+const THEME_OPTIONS: {
+    id: ThemePreference;
+    label: string;
+    icon: typeof Sun;
+}[] = [
+        { id: 'light', label: 'Light', icon: Sun },
+        { id: 'dark', label: 'Dark', icon: Moon },
+        { id: 'system', label: 'System', icon: MonitorSmartphone },
+    ];
+
+const BIO_LIMIT = 200;
 
 export default function SettingsPage() {
-    const router = useRouter();
     const { user, loading: authLoading } = useAuth();
-    const [profile, setProfile] = useState<Profile | null>(null);
+    const { preference, setPreference } = useTheme();
+
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [saved, setSaved] = useState(false);
+    const [feedback, setFeedback] = useState<
+        { tone: 'success' | 'error'; text: string } | null
+    >(null);
 
-    // Form states
     const [nickname, setNickname] = useState('');
     const [flair, setFlair] = useState('');
     const [bio, setBio] = useState('');
     const [fullName, setFullName] = useState('');
-    const [flairColor, setFlairColor] = useState('#000000');
-    const [isSpecialAllowed, setIsSpecialAllowed] = useState(false);
+    const [flairColor, setFlairColor] = useState('#0e7490');
+    const [specialAllowed, setSpecialAllowed] = useState(false);
 
-    useEffect(() => {
-        if (user) {
-            fetchProfile();
-        } else if (!authLoading) {
-            setLoading(false);
-        }
-    }, [user, authLoading]);
+    // Cleared on unmount so the success banner never calls setState on an
+    // unmounted component.
+    const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(
+        () => () => {
+            if (resetTimer.current) clearTimeout(resetTimer.current);
+        },
+        [],
+    );
 
-    const fetchProfile = async () => {
+    const fetchProfile = useCallback(async () => {
         if (!user) return;
         try {
             const { data, error } = await supabase
@@ -64,68 +82,61 @@ export default function SettingsPage() {
                 .eq('id', user.uid)
                 .single();
 
-            if (error && error.code !== 'PGRST116') {
-                console.error('Error fetching profile:', error);
-            }
+            if (error && error.code !== 'PGRST116') throw error;
 
             if (data) {
-                setProfile(data);
-                setNickname(data.nickname || '');
-                setFlair(data.flair || '');
-                setBio(data.bio || '');
-                setFullName(data.full_name || '');
-                setIsSpecialAllowed(data.is_special_flair_allowed || false);
-                setFlairColor(data.flair_color || '#000000');
-            } else {
-                // Create basic profile if it doesn't exist
-                setProfile({
-                    id: user.uid,
-                    email: user.email || '',
-                    full_name: null,
-                    nickname: null,
-                    flair: null,
-                    bio: null,
-                    avatar_url: null
-                });
+                const p = data as Profile;
+                setNickname(p.nickname ?? '');
+                setFlair(p.flair ?? '');
+                setBio(p.bio ?? '');
+                setFullName(p.full_name ?? '');
+                setSpecialAllowed(p.is_special_flair_allowed ?? false);
+                setFlairColor(p.flair_color ?? '#0e7490');
             }
-        } catch (error) {
-            console.error('Error:', error);
+        } catch (err) {
+            console.error('Error fetching profile:', err);
+            setFeedback({ tone: 'error', text: 'Could not load your settings.' });
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
 
-    const saveSettings = async () => {
+    useEffect(() => {
+        if (user) {
+            fetchProfile();
+        } else if (!authLoading) {
+            setLoading(false);
+        }
+    }, [user, authLoading, fetchProfile]);
+
+    const saveSettings = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!user) return;
-
         setSaving(true);
-        setSaved(false);
-
+        setFeedback(null);
         try {
-            const updates = {
+            const { error } = await supabase.from('profiles').upsert({
                 id: user.uid,
+                email: user.email,
                 nickname: nickname.trim() || null,
                 flair: flair || null,
                 bio: bio.trim() || null,
                 full_name: fullName.trim() || null,
                 flair_color: flairColor || null,
                 updated_at: new Date().toISOString(),
-            };
-
-            const { error } = await supabase
-                .from('profiles')
-                .upsert(updates);
-
+            });
             if (error) throw error;
 
             await fetchProfile();
-            setSaved(true);
-
-            // Hide success message after 3 seconds
-            setTimeout(() => setSaved(false), 3000);
-        } catch (error) {
-            console.error('Error updating profile:', error);
-            alert('Error saving settings. Please try again.');
+            setFeedback({ tone: 'success', text: 'Settings saved.' });
+            if (resetTimer.current) clearTimeout(resetTimer.current);
+            resetTimer.current = setTimeout(() => setFeedback(null), 4000);
+        } catch (err) {
+            console.error('Error saving settings:', err);
+            setFeedback({
+                tone: 'error',
+                text: 'Could not save your settings. Please try again.',
+            });
         } finally {
             setSaving(false);
         }
@@ -133,255 +144,349 @@ export default function SettingsPage() {
 
     if (authLoading || loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="text-slate-600">Loading...</div>
+            <div className="page-x mx-auto w-full max-w-2xl space-y-3 pt-6">
+                <Skeleton className="h-28 rounded-2xl" />
+                <Skeleton className="h-64 rounded-2xl" />
             </div>
         );
     }
 
     if (!user) {
         return (
-            <div className="min-h-screen flex flex-col">
-                <Header />
-                <main className="flex-1 flex items-center justify-center p-8">
-                    <GlassCard className="text-center max-w-md w-full py-12">
-                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                            <User size={32} />
-                        </div>
-                        <h1 className="text-2xl font-bold text-slate-800 mb-2">Settings</h1>
-                        <p className="text-slate-500 mb-6">Please sign in to access settings.</p>
-                        <Link href="/login" className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium transition-colors inline-block">
-                            Sign In
-                        </Link>
-                    </GlassCard>
-                </main>
+            <div className="page-x mx-auto w-full max-w-md pt-10">
+                <EmptyState
+                    icon={UserIcon}
+                    title="You're not signed in"
+                    description="Sign in to customise your profile and preferences."
+                    action={
+                        <ButtonLink href="/login?redirect=/settings">
+                            Sign in
+                        </ButtonLink>
+                    }
+                />
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen flex flex-col">
-            <Header />
+        <div className="mx-auto w-full max-w-2xl pb-10">
+            <div className="page-x pt-5">
+                <h1 className="text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
+                    Settings
+                </h1>
+                <p className="mt-1 text-sm text-muted">
+                    Your profile and app preferences.
+                </p>
+            </div>
 
-            <main className="flex-1 px-8 py-10 max-w-4xl mx-auto w-full">
-                <div className="flex items-center gap-4 mb-8">
-                    <Link href="/" className="w-10 h-10 rounded-full bg-white/60 backdrop-blur-sm border border-white/40 flex items-center justify-center text-slate-600 hover:bg-white hover:text-slate-900 transition-colors">
-                        <ArrowLeft size={20} />
-                    </Link>
-                    <div className="flex-1">
-                        <h1 className="text-3xl font-bold text-slate-800">Settings</h1>
-                        <p className="text-sm text-slate-500 font-medium">Customize your profile and preferences</p>
-                    </div>
-                    {saved && (
-                        <div className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg text-sm font-medium">
-                            <CheckCircle size={16} />
-                            Saved!
-                        </div>
-                    )}
+            {feedback && (
+                <div className="page-x mt-4">
+                    <Notice tone={feedback.tone}>{feedback.text}</Notice>
                 </div>
+            )}
 
-                <div className="space-y-6">
-                    {/* Profile Display Settings */}
-                    <GlassCard>
-                        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-                            <User className="text-blue-500" size={24} />
-                            Profile Display
+            {/* Appearance — now that light/dark is actually implemented, it
+                belongs here rather than only on the header toggle. */}
+            <section className="page-x mt-4">
+                <div className="rounded-2xl border border-line bg-surface p-4 shadow-e1">
+                    <h2 className="text-[15px] font-bold text-foreground">
+                        Appearance
+                    </h2>
+                    <p className="mt-0.5 text-xs text-muted">
+                        Applies to this device.
+                    </p>
+                    <div
+                        role="radiogroup"
+                        aria-label="Theme"
+                        className="mt-3 grid grid-cols-3 gap-2"
+                    >
+                        {THEME_OPTIONS.map((opt) => {
+                            const active = preference === opt.id;
+                            return (
+                                <button
+                                    key={opt.id}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={active}
+                                    onClick={() => setPreference(opt.id)}
+                                    className={`press flex h-20 flex-col items-center justify-center gap-1.5 rounded-xl border text-[13px] font-semibold ${active
+                                            ? 'border-primary bg-primary-soft text-primary'
+                                            : 'border-line bg-surface-2 text-muted'
+                                        }`}
+                                >
+                                    <opt.icon size={19} />
+                                    {opt.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            </section>
+
+            <form onSubmit={saveSettings}>
+                <section className="page-x mt-4">
+                    <div className="rounded-2xl border border-line bg-surface p-4 shadow-e1">
+                        <h2 className="text-[15px] font-bold text-foreground">
+                            Profile display
                         </h2>
 
-                        <div className="space-y-5 max-w-2xl">
-                            {/* Email (Read-only) */}
+                        <div className="mt-4 space-y-4">
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                <span className="mb-1.5 block text-[13px] font-semibold text-foreground">
                                     Email
-                                </label>
-                                <div className="flex items-center px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-500">
-                                    <Mail size={16} className="mr-3 opacity-50" />
-                                    {user.email}
-                                </div>
-                                <p className="text-xs text-slate-400 mt-1">This is your account email (cannot be changed)</p>
-                            </div>
-
-                            {/* Full Name */}
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                                    Full Name
-                                </label>
-                                <div className="relative">
-                                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                                        <User size={16} />
-                                    </div>
-                                    <input
-                                        type="text"
-                                        value={fullName}
-                                        onChange={(e) => setFullName(e.target.value)}
-                                        className="block w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                        placeholder="Enter your full name"
+                                </span>
+                                <p className="flex h-12 items-center gap-2.5 rounded-xl bg-surface-2 px-3.5 text-[15px] text-muted">
+                                    <Mail
+                                        size={16}
+                                        className="shrink-0 text-faint"
                                     />
-                                </div>
-                                <p className="text-xs text-slate-400 mt-1">Optional - Used for formal communications</p>
-                            </div>
-
-                            {/* Nickname */}
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                                    Nickname (Display Name) *
-                                </label>
-                                <div className="relative">
-                                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                                        <Sparkles size={16} />
-                                    </div>
-                                    <input
-                                        type="text"
-                                        value={nickname}
-                                        onChange={(e) => setNickname(e.target.value)}
-                                        className="block w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                                        placeholder="Choose a nickname"
-                                        maxLength={30}
-                                    />
-                                </div>
-                                <p className="text-xs text-slate-400 mt-1">
-                                    <strong>This is what others will see</strong> - Used in events, chats, comments, etc.
+                                    <span className="truncate">
+                                        {user.email}
+                                    </span>
                                 </p>
                             </div>
 
-                            {/* Flair Selector */}
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                                    Custom Flair
-                                    {isSpecialAllowed && <span className="ml-2 text-[10px] bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full border border-purple-200">✨ Special Access Unlocked</span>}
+                                <label
+                                    htmlFor="nickname"
+                                    className="mb-1.5 block text-[13px] font-semibold text-foreground"
+                                >
+                                    Nickname{' '}
+                                    <span className="text-danger">*</span>
                                 </label>
+                                <div className="relative">
+                                    <Sparkles
+                                        size={17}
+                                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint"
+                                    />
+                                    <input
+                                        id="nickname"
+                                        type="text"
+                                        value={nickname}
+                                        onChange={(e) =>
+                                            setNickname(e.target.value)
+                                        }
+                                        maxLength={30}
+                                        required
+                                        placeholder="Choose a nickname"
+                                        className="h-12 w-full rounded-xl border border-line bg-surface pl-11 pr-4 text-[15px] text-foreground placeholder:text-faint focus:border-primary focus:outline-none"
+                                    />
+                                </div>
+                                <p className="mt-1.5 text-xs text-faint">
+                                    This is what others see in events, chats
+                                    and comments.
+                                </p>
+                            </div>
 
-                                <div className="space-y-4">
-                                    {/* Standard Flairs */}
-                                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
-                                        <p className="text-xs font-bold text-slate-400 uppercase mb-3">Standard Badges</p>
-                                        <div className="grid grid-cols-10 gap-2 max-h-48 overflow-y-auto custom-scrollbar">
-                                            {PUBLIC_FLAIRS.map((emoji) => (
+                            <div>
+                                <label
+                                    htmlFor="fullName"
+                                    className="mb-1.5 block text-[13px] font-semibold text-foreground"
+                                >
+                                    Full name
+                                </label>
+                                <div className="relative">
+                                    <UserIcon
+                                        size={17}
+                                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint"
+                                    />
+                                    <input
+                                        id="fullName"
+                                        type="text"
+                                        autoComplete="name"
+                                        value={fullName}
+                                        onChange={(e) =>
+                                            setFullName(e.target.value)
+                                        }
+                                        placeholder="Optional"
+                                        className="h-12 w-full rounded-xl border border-line bg-surface pl-11 pr-4 text-[15px] text-foreground placeholder:text-faint focus:border-primary focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Badge picker. Was grid-cols-10 at every width,
+                                giving ~30px targets on a phone. */}
+                            <div>
+                                <span className="mb-1.5 block text-[13px] font-semibold text-foreground">
+                                    Badge
+                                    {specialAllowed && (
+                                        <span className="ml-2 rounded-full bg-cat-social-soft px-2 py-0.5 text-[10px] font-bold text-cat-social">
+                                            Special access
+                                        </span>
+                                    )}
+                                </span>
+
+                                <div className="rounded-xl border border-line bg-surface-2 p-3">
+                                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-faint">
+                                        Standard
+                                    </p>
+                                    <div className="grid max-h-44 grid-cols-6 gap-1.5 overflow-y-auto sm:grid-cols-8 lg:grid-cols-10">
+                                        {PUBLIC_FLAIRS.map((emoji) => (
+                                            <button
+                                                key={emoji}
+                                                type="button"
+                                                onClick={() => setFlair(emoji)}
+                                                aria-pressed={flair === emoji}
+                                                aria-label={`Badge ${emoji}`}
+                                                className={`press flex aspect-square items-center justify-center rounded-lg text-xl ${flair === emoji
+                                                        ? 'bg-primary ring-2 ring-primary/40'
+                                                        : 'bg-surface hover:bg-surface-3'
+                                                    }`}
+                                            >
+                                                {emoji}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {specialAllowed && (
+                                    <div className="mt-2 rounded-xl border border-cat-social/30 bg-cat-social-soft/40 p-3">
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                            <p className="text-[11px] font-bold uppercase tracking-wide text-cat-social">
+                                                Rare
+                                            </p>
+                                            <label className="flex items-center gap-2 text-xs font-semibold text-muted">
+                                                Colour
+                                                <input
+                                                    type="color"
+                                                    value={flairColor}
+                                                    onChange={(e) =>
+                                                        setFlairColor(
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    aria-label="Badge colour"
+                                                    className="h-8 w-10 cursor-pointer rounded border-0 bg-transparent p-0"
+                                                />
+                                            </label>
+                                        </div>
+                                        <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-8 lg:grid-cols-10">
+                                            {SPECIAL_FLAIRS.map((emoji) => (
                                                 <button
                                                     key={emoji}
-                                                    onClick={() => setFlair(emoji)}
-                                                    className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl transition-all hover:scale-110 ${flair === emoji
-                                                        ? 'bg-blue-500 shadow-lg ring-2 ring-blue-300'
-                                                        : 'bg-white hover:bg-slate-100'
-                                                        }`}
                                                     type="button"
+                                                    onClick={() =>
+                                                        setFlair(emoji)
+                                                    }
+                                                    aria-pressed={
+                                                        flair === emoji
+                                                    }
+                                                    aria-label={`Badge ${emoji}`}
+                                                    style={{
+                                                        color:
+                                                            flair === emoji
+                                                                ? undefined
+                                                                : flairColor,
+                                                    }}
+                                                    className={`press flex aspect-square items-center justify-center rounded-lg text-xl ${flair === emoji
+                                                            ? 'bg-cat-social ring-2 ring-cat-social/40'
+                                                            : 'bg-surface hover:bg-surface-3'
+                                                        }`}
                                                 >
                                                     {emoji}
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
+                                )}
 
-                                    {/* Special Flairs (Conditional) */}
-                                    {isSpecialAllowed && (
-                                        <div className="bg-purple-50 rounded-xl border border-purple-200 p-4">
-                                            <div className="flex items-center justify-between mb-3">
-                                                <p className="text-xs font-bold text-purple-600 uppercase">Special / Rare Badges</p>
-                                                {/* Color Picker */}
-                                                <div className="flex items-center gap-2">
-                                                    <label className="text-xs font-medium text-purple-700">Badge Color:</label>
-                                                    <input
-                                                        type="color"
-                                                        value={flairColor}
-                                                        onChange={(e) => setFlairColor(e.target.value)}
-                                                        className="w-8 h-8 rounded cursor-pointer border-0 p-0 bg-transparent"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-10 gap-2">
-                                                {SPECIAL_FLAIRS.map((emoji) => (
-                                                    <button
-                                                        key={emoji}
-                                                        onClick={() => setFlair(emoji)}
-                                                        className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl transition-all hover:scale-110 ${flair === emoji
-                                                            ? 'bg-purple-500 shadow-lg ring-2 ring-purple-300'
-                                                            : 'bg-white hover:bg-purple-100'
-                                                            }`}
-                                                        type="button"
-                                                        style={{ color: flair === emoji ? 'white' : flairColor }}
-                                                    >
-                                                        {emoji}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="flex items-center gap-2 mt-4">
-                                    <div className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 flex items-center gap-2 cursor-not-allowed">
-                                        <span className="text-xl" style={{ color: flairColor }}>{flair || <span className="text-slate-400 text-sm">Select an emoji above</span>}</span>
-                                    </div>
-                                    {flair && (
-                                        <button
-                                            onClick={() => setFlair('')}
-                                            className="px-4 py-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors text-sm font-medium"
-                                            type="button"
-                                        >
-                                            Clear
-                                        </button>
-                                    )}
-                                </div>
-                                <p className="text-xs text-slate-400 mt-1">Select a badge to display next to your name</p>
+                                {flair && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFlair('')}
+                                        className="press mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-danger-soft px-3 text-[13px] font-semibold text-danger"
+                                    >
+                                        <X size={14} />
+                                        Clear badge
+                                    </button>
+                                )}
                             </div>
 
-                            {/* Bio */}
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                <label
+                                    htmlFor="bio"
+                                    className="mb-1.5 block text-[13px] font-semibold text-foreground"
+                                >
                                     Bio
                                 </label>
                                 <div className="relative">
-                                    <div className="absolute left-4 top-4 text-slate-400">
-                                        <FileText size={16} />
-                                    </div>
+                                    <FileText
+                                        size={17}
+                                        className="pointer-events-none absolute left-3.5 top-3.5 text-faint"
+                                    />
                                     <textarea
+                                        id="bio"
                                         value={bio}
                                         onChange={(e) => setBio(e.target.value)}
-                                        className="block w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
-                                        placeholder="Tell us about yourself..."
                                         rows={4}
-                                        maxLength={200}
+                                        maxLength={BIO_LIMIT}
+                                        placeholder="Tell people a little about yourself…"
+                                        className="w-full resize-none rounded-xl border border-line bg-surface py-3 pl-11 pr-4 text-[15px] text-foreground placeholder:text-faint focus:border-primary focus:outline-none"
                                     />
                                 </div>
-                                <p className="text-xs text-slate-400 mt-1">
-                                    {bio.length}/200 characters
+                                <p className="mt-1.5 text-right text-xs text-faint">
+                                    {bio.length}/{BIO_LIMIT}
                                 </p>
                             </div>
 
-                            {/* Preview */}
                             {nickname && (
-                                <div className="p-4 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border border-blue-100">
-                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Preview</p>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                                <div className="rounded-xl border border-line bg-surface-2 p-3.5">
+                                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-faint">
+                                        Preview
+                                    </p>
+                                    <div className="flex items-center gap-3">
+                                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground">
                                             {nickname.charAt(0).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-slate-800">{nickname}</span>
-                                                {flair && <span className="text-lg" style={{ color: flairColor }}>{flair}</span>}
-                                            </div>
-                                            {bio && <p className="text-xs text-slate-600 line-clamp-1">{bio}</p>}
+                                        </span>
+                                        <div className="min-w-0">
+                                            <p className="flex items-center gap-1.5">
+                                                <span className="truncate font-bold text-foreground">
+                                                    {nickname}
+                                                </span>
+                                                {flair && (
+                                                    <span
+                                                        className="text-lg"
+                                                        style={{
+                                                            color: flairColor,
+                                                        }}
+                                                    >
+                                                        {flair}
+                                                    </span>
+                                                )}
+                                            </p>
+                                            {bio && (
+                                                <p className="line-clamp-1 text-xs text-muted">
+                                                    {bio}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
                             )}
                         </div>
-                    </GlassCard>
-
-                    {/* Save Button */}
-                    <div className="flex justify-end">
-                        <button
-                            onClick={saveSettings}
-                            disabled={saving || !nickname.trim()}
-                            className="px-8 py-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-bold transition-all flex items-center gap-2 shadow-lg shadow-blue-200 hover:shadow-xl hover:shadow-blue-300"
-                        >
-                            <Save size={20} />
-                            {saving ? 'Saving...' : 'Save Settings'}
-                        </button>
                     </div>
+                </section>
+
+                {/* Sticky on mobile so the primary action stays reachable in
+                    a long form. */}
+                <div
+                    className="page-x sticky z-20 mt-4 pb-2"
+                    style={{
+                        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 4.5rem)',
+                    }}
+                >
+                    <Button
+                        type="submit"
+                        size="lg"
+                        block
+                        loading={saving}
+                        disabled={!nickname.trim()}
+                    >
+                        <Save size={17} />
+                        Save settings
+                    </Button>
                 </div>
-            </main >
-        </div >
+            </form>
+        </div>
     );
 }

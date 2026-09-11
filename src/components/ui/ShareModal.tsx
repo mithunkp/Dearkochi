@@ -1,70 +1,75 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { X, Copy, Download, Share2, Check } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Copy, Download, Share2, Check, Link2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
-import { ShareablePlaceCard, ShareableClassifiedCard, ShareableStoreCard, ShareableDatePlanCard } from './ShareableCards';
+import {
+    ShareablePlaceCard,
+    ShareableClassifiedCard,
+    ShareableStoreCard,
+    ShareableDatePlanCard,
+} from './ShareableCards';
+import { Sheet } from './Sheet';
+import { Button } from './Button';
+import { Notice } from './Notice';
+
+type ShareType = 'place' | 'classified' | 'store' | 'date-plan';
+
+/** Only the fields the shareable cards actually read. */
+type ShareData = {
+    image_url?: string | null;
+    stickers?: { src: string;[key: string]: unknown }[];
+    [key: string]: unknown;
+};
 
 interface ShareModalProps {
     isOpen: boolean;
     onClose: () => void;
     title: string;
     url: string;
-    type: 'place' | 'classified' | 'store' | 'date-plan';
-    data: any;
+    type: ShareType;
+    /* Accepts any record the shareable cards understand — callers pass
+       domain interfaces (Attraction, Store, Ad) that have no index
+       signature, so this is widened here and narrowed below. */
+    data: object;
 }
 
-export function ShareModal({ isOpen, onClose, title, url, type, data }: ShareModalProps) {
-    const [activeTab, setActiveTab] = useState<'link' | 'image'>('link');
+export function ShareModal({
+    isOpen,
+    onClose,
+    title,
+    url,
+    type,
+    data,
+}: ShareModalProps) {
+    const [tab, setTab] = useState<'link' | 'image'>('link');
     const [copied, setCopied] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [generating, setGenerating] = useState(false);
+    const [preview, setPreview] = useState<string | null>(null);
+    const [proxied, setProxied] = useState<ShareData | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
     const captureRef = useRef<HTMLDivElement>(null);
-    const [proxiedData, setProxiedData] = useState<any>(null);
 
-    // Reset state on open
     useEffect(() => {
-        if (isOpen) {
-            setActiveTab('link');
-            setCopied(false);
-            setPreviewImage(null);
-            setIsGenerating(false);
-            setProxiedData(null); // Reset proxy data
-        }
+        if (!isOpen) return;
+        setTab('link');
+        setCopied(false);
+        setPreview(null);
+        setGenerating(false);
+        setProxied(null);
+        setError(null);
     }, [isOpen]);
 
-    // ... scroll lock effect (unchanged) ...
-    // Cleanup scroll lock
-    useEffect(() => {
-        if (isOpen) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
-            // Cleanup preview image URLs to avoid memory leaks
-            if (previewImage) {
-                URL.revokeObjectURL(previewImage);
-            }
-        }
-        return () => {
-            document.body.style.overflow = 'unset';
-        };
-    }, [isOpen]);
-
-
-    const handleCopyLink = () => {
-        navigator.clipboard.writeText(url);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
-    // Helper to turn URL into Base64 to avoid CORS taint in canvas
-    const proxyImage = async (url: string): Promise<string> => {
+    /* html2canvas taints the canvas on cross-origin images, so every remote
+       image is inlined as a data URL before capture. */
+    const proxyImage = useCallback(async (src: string): Promise<string> => {
         try {
-            if (!url) return '';
-            if (url.startsWith('data:')) return url; // Already base64
+            if (!src) return '';
+            if (src.startsWith('data:')) return src;
 
-            const response = await fetch(url);
+            const response = await fetch(src);
             const blob = await response.blob();
             return await new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -72,222 +77,260 @@ export function ShareModal({ isOpen, onClose, title, url, type, data }: ShareMod
                 reader.onerror = reject;
                 reader.readAsDataURL(blob);
             });
-        } catch (error) {
-            console.error('Error proxying image:', url, error);
-            // Return original URL as fallback, though it might fail CORS
-            return url;
+        } catch (err) {
+            console.error('Error inlining image:', src, err);
+            return src;
         }
-    };
+    }, []);
 
-    // Prepare data with Base64 images
     useEffect(() => {
-        const prepareData = async () => {
-            if (activeTab !== 'image' || proxiedData) return;
+        if (tab !== 'image' || proxied) return;
 
-            // Deep copy data to avoid mutating props
-            let newData = JSON.parse(JSON.stringify(data));
+        let cancelled = false;
+        (async () => {
+            const next = JSON.parse(JSON.stringify(data)) as ShareData;
 
-            if (type === 'place' || type === 'classified') {
-                if (newData.image_url) {
-                    newData.image_url = await proxyImage(newData.image_url);
-                }
-            } else if (type === 'date-plan') {
-                if (newData.stickers && Array.isArray(newData.stickers)) {
-                    // Process stickers in parallel
-                    newData.stickers = await Promise.all(
-                        newData.stickers.map(async (s: any) => ({
-                            ...s,
-                            src: await proxyImage(s.src)
-                        }))
-                    );
-                }
+            if ((type === 'place' || type === 'classified') && next.image_url) {
+                next.image_url = await proxyImage(next.image_url);
+            } else if (type === 'date-plan' && Array.isArray(next.stickers)) {
+                next.stickers = await Promise.all(
+                    next.stickers.map(async (s) => ({
+                        ...s,
+                        src: await proxyImage(s.src),
+                    })),
+                );
             }
-            // Stores typically don't have a main image in the share card (just icon), so no changes needed
 
-            setProxiedData(newData);
+            if (!cancelled) setProxied(next);
+        })();
+
+        return () => {
+            cancelled = true;
         };
+    }, [tab, data, type, proxied, proxyImage]);
 
-        prepareData();
-    }, [activeTab, data, type, proxiedData]);
-
-
-    const generateImage = async () => {
+    const generateImage = useCallback(async () => {
         if (!captureRef.current) return;
-        setIsGenerating(true);
-
+        setGenerating(true);
+        setError(null);
         try {
-            // Small delay to ensure render of new proxy data
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Let the freshly-injected data URLs paint before capturing.
+            await new Promise((r) => setTimeout(r, 300));
 
             const canvas = await html2canvas(captureRef.current, {
                 backgroundColor: '#ffffff',
-                scale: 2, // Retina quality
+                scale: 2,
                 logging: false,
                 useCORS: true,
                 allowTaint: true,
             });
-
-            const imageUrl = canvas.toDataURL('image/png');
-            setPreviewImage(imageUrl);
-        } catch (error) {
-            console.error('Error generating image:', error);
-            alert('Failed to generate image. Please try again.');
+            setPreview(canvas.toDataURL('image/png'));
+        } catch (err) {
+            console.error('Error generating image:', err);
+            setError('Could not build the image. Try the link instead.');
         } finally {
-            setIsGenerating(false);
+            setGenerating(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (tab === 'image' && proxied && !preview && !generating) {
+            generateImage();
+        }
+    }, [tab, proxied, preview, generating, generateImage]);
+
+    const copyLink = async () => {
+        try {
+            await navigator.clipboard.writeText(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            // Clipboard API needs a secure context and can be blocked.
+            setError('Could not copy. Long-press the link to copy it manually.');
         }
     };
 
-    const handleShareImage = async () => {
-        if (!previewImage) return;
+    /* Sharing a link through the OS sheet is the expected mobile action; the
+       previous version only offered it for the generated image. */
+    const canShareLink =
+        typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
+    const shareLink = async () => {
         try {
-            // Convert data URL to Blob
-            const res = await fetch(previewImage);
-            const blob = await res.blob();
-            const file = new File([blob], `dear-kochi-${type}-share.png`, { type: 'image/png' });
+            await navigator.share({
+                title,
+                text: `${title} — on Dear Kochi`,
+                url,
+            });
+        } catch (err) {
+            // A user-cancelled share is not an error worth reporting.
+            if ((err as Error)?.name !== 'AbortError') {
+                console.error('Error sharing link:', err);
+            }
+        }
+    };
 
-            if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    const downloadImage = () => {
+        if (!preview) return;
+        const link = document.createElement('a');
+        link.href = preview;
+        link.download = `dear-kochi-${type}-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const shareImage = async () => {
+        if (!preview) return;
+        try {
+            const blob = await (await fetch(preview)).blob();
+            const file = new File([blob], `dear-kochi-${type}.png`, {
+                type: 'image/png',
+            });
+
+            if (navigator.canShare?.({ files: [file] })) {
                 await navigator.share({
-                    title: title,
+                    title,
                     text: `Check this out on Dear Kochi: ${title}`,
                     files: [file],
                 });
             } else {
-                // Fallback to download
-                const link = document.createElement('a');
-                link.href = previewImage;
-                link.download = `dear-kochi-${type}-${Date.now()}.png`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                downloadImage();
             }
-        } catch (error) {
-            console.error('Error sharing image:', error);
+        } catch (err) {
+            if ((err as Error)?.name !== 'AbortError') {
+                console.error('Error sharing image:', err);
+            }
         }
     };
 
-    // Auto-generate preview ONLY when proxy data is ready
-    useEffect(() => {
-        if (activeTab === 'image' && proxiedData && !previewImage && !isGenerating) {
-            generateImage();
-        }
-    }, [activeTab, proxiedData]);
-
-
-    if (!isOpen) return null;
-
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl relative animate-scale-up flex flex-col max-h-[90vh]">
-
-                {/* Header */}
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                    <h3 className="font-bold text-slate-800 text-lg">Share</h3>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500">
-                        <X size={20} />
-                    </button>
-                </div>
-
-                {/* Tabs */}
-                <div className="flex p-1 bg-slate-100 m-4 rounded-xl">
+        <Sheet open={isOpen} onClose={onClose} title="Share">
+            <div className="flex rounded-xl border border-line bg-surface-2 p-1">
+                {(['link', 'image'] as const).map((id) => (
                     <button
-                        onClick={() => setActiveTab('link')}
-                        className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'link' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        key={id}
+                        type="button"
+                        onClick={() => setTab(id)}
+                        aria-pressed={tab === id}
+                        className={`press h-10 flex-1 rounded-lg text-sm font-semibold ${tab === id
+                                ? 'bg-surface text-foreground shadow-e1'
+                                : 'text-muted'
+                            }`}
                     >
-                        Share Link
+                        {id === 'link' ? 'Link' : 'Image'}
                     </button>
-                    <button
-                        onClick={() => setActiveTab('image')}
-                        className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'image' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Share Image
-                    </button>
-                </div>
+                ))}
+            </div>
 
-                {/* Content */}
-                <div className="p-4 pt-0 overflow-y-auto">
-                    {activeTab === 'link' ? (
-                        <div className="space-y-4">
-                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-center">
-                                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                                    <Share2 size={32} />
-                                </div>
-                                <h4 className="font-bold text-slate-900 mb-1">{title}</h4>
-                                <p className="text-sm text-slate-500 truncate px-4">{url}</p>
-                            </div>
+            {error && (
+                <Notice tone="error" className="mt-3">
+                    {error}
+                </Notice>
+            )}
 
-                            <button
-                                onClick={handleCopyLink}
-                                className="w-full py-3.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 active:scale-[0.98]"
-                            >
-                                {copied ? <Check size={18} /> : <Copy size={18} />}
-                                {copied ? 'Copied!' : 'Copy Link'}
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="space-y-4 flex flex-col items-center">
+            {tab === 'link' ? (
+                <div className="mt-4 space-y-3">
+                    <div className="rounded-xl border border-line bg-surface-2 p-4 text-center">
+                        <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary-soft text-primary">
+                            <Link2 size={26} />
+                        </span>
+                        <p className="font-bold text-foreground">{title}</p>
+                        <p className="mt-1 truncate text-xs text-muted">{url}</p>
+                    </div>
 
-                            {/* Preview Area */}
-                            <div className="w-full bg-slate-100 rounded-xl border border-slate-200 overflow-hidden relative flex items-center justify-center min-h-[200px]">
-                                {isGenerating || !proxiedData ? (
-                                    <div className="flex flex-col items-center gap-2 py-8">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-800"></div>
-                                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                                            {!proxiedData ? 'Preparing Assets...' : 'Generating Preview...'}
-                                        </p>
-                                    </div>
-                                ) : previewImage ? (
-                                    <img src={previewImage} alt="Share Preview" className="w-full h-auto object-contain max-h-[400px]" />
-                                ) : (
-                                    <div className="py-8 text-slate-400">Preview Failed</div>
-                                )}
-                            </div>
-
-                            <div className="flex gap-2 w-full">
-                                {typeof navigator !== 'undefined' && (navigator as any).share && (
-                                    <button
-                                        onClick={handleShareImage}
-                                        disabled={!previewImage}
-                                        className="flex-1 py-3.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_4px_6px_-1px_rgba(59,130,246,0.5)] active:scale-[0.98]"
-                                    >
-                                        <Share2 size={18} /> Share
-                                    </button>
-                                )}
-                                <button
-                                    onClick={() => {
-                                        if (!previewImage) return;
-                                        const link = document.createElement('a');
-                                        link.href = previewImage;
-                                        link.download = `dear-kochi-${type}-${Date.now()}.png`;
-                                        document.body.appendChild(link);
-                                        link.click();
-                                        document.body.removeChild(link);
-                                    }}
-                                    disabled={!previewImage}
-                                    className={`flex-1 py-3.5 bg-[#f1f5f9] text-[#0f172a] rounded-xl font-bold hover:bg-[#e2e8f0] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] border border-[#cbd5e1] ${!((navigator as any)?.share) ? 'w-full' : ''}`}
-                                >
-                                    <Download size={18} /> Download
-                                </button>
-                            </div>
-                        </div>
+                    {canShareLink && (
+                        <Button block size="lg" onClick={shareLink}>
+                            <Share2 size={17} />
+                            Share
+                        </Button>
                     )}
-                </div>
 
-                {/* Hidden Render Area for html2canvas */}
-                {/* We render this "off-screen" but visible in DOM so html2canvas can capture it. 
-                    Using absolute positioning with z-index -1000 to hide it.
-                */}
-                <div style={{ position: 'absolute', top: -9999, left: -9999, zIndex: -10 }} >
-                    <div ref={captureRef}>
-                        {proxiedData && <ShareableCardSwitch type={type} data={proxiedData} />}
+                    <Button
+                        block
+                        size="lg"
+                        variant={canShareLink ? 'secondary' : 'primary'}
+                        onClick={copyLink}
+                    >
+                        {copied ? <Check size={17} /> : <Copy size={17} />}
+                        {copied ? 'Copied' : 'Copy link'}
+                    </Button>
+                </div>
+            ) : (
+                <div className="mt-4 space-y-3">
+                    <div className="flex min-h-[200px] items-center justify-center overflow-hidden rounded-xl border border-line bg-surface-2">
+                        {generating || !proxied ? (
+                            <div className="flex flex-col items-center gap-2 py-8">
+                                <span
+                                    aria-hidden
+                                    className="h-8 w-8 animate-spin rounded-full border-4 border-line border-t-primary"
+                                />
+                                <p className="text-xs font-semibold text-muted">
+                                    {proxied ? 'Building image…' : 'Preparing…'}
+                                </p>
+                            </div>
+                        ) : preview ? (
+                            // Generated in-browser as a data URL, so next/image
+                            // cannot optimise it.
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={preview}
+                                alt={`Shareable card for ${title}`}
+                                className="max-h-[380px] w-full object-contain"
+                            />
+                        ) : (
+                            <p className="py-8 text-sm text-muted">
+                                Preview unavailable
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="flex gap-2">
+                        {canShareLink && (
+                            <Button
+                                block
+                                size="lg"
+                                onClick={shareImage}
+                                disabled={!preview}
+                            >
+                                <Share2 size={17} />
+                                Share
+                            </Button>
+                        )}
+                        <Button
+                            block
+                            size="lg"
+                            variant={canShareLink ? 'secondary' : 'primary'}
+                            onClick={downloadImage}
+                            disabled={!preview}
+                        >
+                            <Download size={17} />
+                            Download
+                        </Button>
                     </div>
                 </div>
+            )}
+
+            {/* Off-screen render target for html2canvas. */}
+            <div
+                aria-hidden
+                style={{ position: 'absolute', top: -9999, left: -9999, zIndex: -10 }}
+            >
+                <div ref={captureRef}>
+                    {proxied && <ShareableCardSwitch type={type} data={proxied} />}
+                </div>
             </div>
-        </div>
+        </Sheet>
     );
 }
 
-function ShareableCardSwitch({ type, data }: { type: string, data: any }) {
+function ShareableCardSwitch({
+    type,
+    data,
+}: {
+    type: ShareType;
+    data: ShareData;
+}) {
     switch (type) {
         case 'place':
             return <ShareablePlaceCard place={data} />;

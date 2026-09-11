@@ -1,13 +1,30 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from '@/lib/auth-context';
+import { ThemeProvider, themeInitScript } from '@/lib/theme-context';
 import { AnalyticsTracker } from '@/components/AnalyticsTracker';
+import { AppShell } from '@/components/shell/AppShell';
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
+  display: "swap",
 });
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // Let the app paint under the notch and home indicator; the shell adds
+  // safe-area padding where it matters.
+  viewportFit: 'cover',
+  // Capped rather than locked, so pinch-zoom still works for accessibility.
+  maximumScale: 5,
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f5f7fa' },
+    { media: '(prefers-color-scheme: dark)', color: '#080c12' },
+  ],
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://dearkochi.com'),
@@ -89,15 +106,29 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
+      <head>
+        {/* Must run before first paint, otherwise dark-mode users get a
+            white flash on every navigation. */}
+        <script
+          dangerouslySetInnerHTML={{ __html: themeInitScript }}
+        />
+      </head>
       <body
         className={`${inter.variable} antialiased`}
         suppressHydrationWarning
       >
-        <div className="page-bg" />
-        <AuthProvider>
-          <AnalyticsTracker />
-          {children}
-        </AuthProvider>
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+        >
+          Skip to content
+        </a>
+        <ThemeProvider>
+          <AuthProvider>
+            <AnalyticsTracker />
+            <AppShell>{children}</AppShell>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

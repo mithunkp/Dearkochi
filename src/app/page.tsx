@@ -1,197 +1,411 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
-  CloudSun,
-  MapPin,
-  Bus,
-  AlertTriangle,
-  Users,
-  Tag,
-  Store,
-  ArrowRight,
-  Zap,
-  Calendar,
-  Heart,
-  Settings
+    MapPin,
+    Bus,
+    AlertTriangle,
+    Users,
+    Tag,
+    Store,
+    CalendarDays,
+    Heart,
+    Backpack,
+    Search,
+    Droplets,
+    Wind,
+    Gauge,
+    ChevronRight,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-import { Header } from '@/components/Header';
-import { GlassCard } from '@/components/ui/GlassCard';
+import { Section, Carousel } from '@/components/ui/Section';
+import { Skeleton, LoadingAnnouncer } from '@/components/ui/Skeleton';
 import { useAuth } from '@/lib/auth-context';
-import { getWeatherDescription, WeatherData } from '@/lib/weather';
+import {
+    getWeatherDescription,
+    getWeatherIcon,
+    getAqiBand,
+    WeatherData,
+} from '@/lib/weather';
 import HomePageWrapper from '@/components/HomePageWrapper';
 
+type Destination = {
+    href: string;
+    label: string;
+    hint: string;
+    icon: LucideIcon;
+    /** Token pair from globals.css, keeping tile colour theme-aware. */
+    fg: string;
+    bg: string;
+};
+
+const DESTINATIONS: Destination[] = [
+    {
+        href: '/places',
+        label: 'Must Visit',
+        hint: 'Forts, beaches, cafés',
+        icon: MapPin,
+        fg: 'text-cat-places',
+        bg: 'bg-cat-places-soft',
+    },
+    {
+        href: '/local-events',
+        label: 'Events',
+        hint: "What's on this week",
+        icon: CalendarDays,
+        fg: 'text-cat-events',
+        bg: 'bg-cat-events-soft',
+    },
+    {
+        href: '/classified',
+        label: 'Classifieds',
+        hint: 'Buy, sell, rent',
+        icon: Tag,
+        fg: 'text-cat-classified',
+        bg: 'bg-cat-classified-soft',
+    },
+    {
+        href: '/stores',
+        label: 'Stores',
+        hint: 'Local businesses',
+        icon: Store,
+        fg: 'text-cat-stores',
+        bg: 'bg-cat-stores-soft',
+    },
+    {
+        href: '/transport',
+        label: 'Transport',
+        hint: 'Metro, bus, ferry',
+        icon: Bus,
+        fg: 'text-cat-transport',
+        bg: 'bg-cat-transport-soft',
+    },
+    {
+        href: '/emergency',
+        label: 'Emergency',
+        hint: 'Helplines nearby',
+        icon: AlertTriangle,
+        fg: 'text-cat-emergency',
+        bg: 'bg-cat-emergency-soft',
+    },
+];
+
+const PLANNERS: Destination[] = [
+    {
+        href: '/date-planner',
+        label: 'Date Planner',
+        hint: 'Build an evening out',
+        icon: Heart,
+        fg: 'text-cat-events',
+        bg: 'bg-cat-events-soft',
+    },
+    {
+        href: '/packing',
+        label: 'Packing List',
+        hint: 'Before you travel',
+        icon: Backpack,
+        fg: 'text-cat-classified',
+        bg: 'bg-cat-classified-soft',
+    },
+    {
+        href: '/social',
+        label: 'Social',
+        hint: 'Meet locals',
+        icon: Users,
+        fg: 'text-cat-social',
+        bg: 'bg-cat-social-soft',
+    },
+    {
+        href: '/search',
+        label: 'Search',
+        hint: 'Find anything',
+        icon: Search,
+        fg: 'text-cat-weather',
+        bg: 'bg-cat-weather-soft',
+    },
+];
+
+function greeting(date: Date) {
+    const h = date.getHours();
+    if (h < 5) return 'Good night';
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    if (h < 21) return 'Good evening';
+    return 'Good night';
+}
+
 export default function DearKochi() {
-  const router = useRouter();
-  const { user } = useAuth();
-  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+    const { user } = useAuth();
+    const [weather, setWeather] = useState<WeatherData | null>(null);
+    const [weatherFailed, setWeatherFailed] = useState(false);
+    // Set only after mount: the greeting depends on the visitor's clock,
+    // which the server cannot know without a hydration mismatch.
+    const [now, setNow] = useState<Date | null>(null);
 
-  const fetchWeather = async () => {
-    try {
-      const res = await fetch('/api/weather');
-      if (res.ok) setWeatherData(await res.json());
-    } catch (e) { console.error(e); }
-  };
+    useEffect(() => setNow(new Date()), []);
 
-  useEffect(() => {
-    fetchWeather();
-    // Refresh weather every 5 minutes
-    const interval = setInterval(fetchWeather, 300000);
-    return () => clearInterval(interval);
-  }, []);
+    const loadWeather = useCallback(async () => {
+        try {
+            const res = await fetch('/api/weather');
+            if (!res.ok) throw new Error(`Weather request failed: ${res.status}`);
+            setWeather(await res.json());
+            setWeatherFailed(false);
+        } catch (err) {
+            console.error(err);
+            setWeatherFailed(true);
+        }
+    }, []);
 
-  const menuItems = [
-    { id: 'places', label: 'Must Visit', icon: MapPin, value: 'Top Spots', unit: '', color: 'text-orange-500', bg: 'bg-orange-100' },
-    { id: 'transport', label: 'Transport', icon: Bus, value: 'Metro/Bus', unit: '', color: 'text-blue-500', bg: 'bg-blue-100' },
-    { id: 'emergency', label: 'Emergency', icon: AlertTriangle, value: 'Help', unit: '', color: 'text-red-500', bg: 'bg-red-100' },
-    { id: 'social', label: 'Social', icon: Users, value: 'Coming Soon', unit: '', color: 'text-purple-500', bg: 'bg-purple-100' },
-    { id: 'classified', label: 'Classifieds', icon: Tag, value: 'Buy/Sell', unit: '', color: 'text-teal-500', bg: 'bg-teal-100' },
-    { id: 'stores', label: 'Stores', icon: Store, value: 'Shop', unit: '', color: 'text-indigo-500', bg: 'bg-indigo-100' },
-  ];
+    useEffect(() => {
+        loadWeather();
+        const id = setInterval(loadWeather, 300_000);
+        return () => clearInterval(id);
+    }, [loadWeather]);
 
-  const handleNavigation = (path: string) => {
-    router.push(path);
-  };
+    const firstName =
+        user?.displayName?.split(' ')[0] ?? user?.email?.split('@')[0] ?? null;
 
-  return (
-    <HomePageWrapper>
-      <div className="min-h-screen flex flex-col">
-        <Header />
+    return (
+        <HomePageWrapper>
+            {/* Visible page heading. The previous build marked its only h1
+                sr-only, leaving the screen with no title at all. */}
+            <div className="page-x mx-auto w-full max-w-6xl pt-5 pb-1">
+                <p className="min-h-[18px] text-[13px] font-semibold text-muted">
+                    {now ? greeting(now) : ''}
+                    {now && firstName ? `, ${firstName}` : ''}
+                </p>
+                <h1 className="mt-0.5 text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
+                    Dear Kochi
+                </h1>
+                <p className="mt-1 text-sm leading-relaxed text-muted">
+                    Your guide to Cochin — places, events, transport and the
+                    city&rsquo;s daily rhythm.
+                </p>
+            </div>
 
-        <main className="flex-1 px-8 py-10 max-w-5xl mx-auto w-full">
-          <div className="mb-10 text-center md:text-left sr-only">
-            <h1 className="text-5xl font-black mb-3 text-slate-800 tracking-tight">
-              Explore <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-teal-500">Kochi</span>
-            </h1>
-            <p className="text-xl text-slate-600 max-w-2xl font-medium leading-relaxed">
-              Your ultimate guide to <strong className="text-slate-800">Cochin</strong> (Ernakulam). Discover top tourist places, local events, news, and classifieds in the heart of Kerala.
-            </p>
-          </div>
-
-          {/* Stats Grid (Navigation) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
-            {menuItems.map((item) => (
-              <GlassCard
-                key={item.id}
-                className="cursor-pointer transition-transform hover:-translate-y-1 hover:shadow-lg group"
-              >
-                <div onClick={() => handleNavigation(`/${item.id}`)}>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${item.bg} ${item.color}`}>
-                    <item.icon size={20} />
-                  </div>
-                  <div className="text-sm opacity-70 mb-1.5 font-medium text-slate-600">{item.label}</div>
-                  <div className="text-2xl font-bold text-slate-800 flex items-baseline gap-1">
-                    {item.value}
-                    {item.unit && <small className="text-sm opacity-70 font-normal">{item.unit}</small>}
-                  </div>
+            <div className="mx-auto w-full max-w-6xl pb-8">
+                <div className="page-x mt-4">
+                    <WeatherHero
+                        weather={weather}
+                        failed={weatherFailed}
+                        onRetry={loadWeather}
+                    />
                 </div>
-              </GlassCard>
-            ))}
-          </div>
 
-          {/* Insights Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Section title="Explore Kochi" className="mt-7">
+                    <div className="page-x dk-stagger grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        {DESTINATIONS.map((d, i) => (
+                            <DestinationTile
+                                key={d.href}
+                                destination={d}
+                                index={i}
+                            />
+                        ))}
+                    </div>
+                </Section>
 
-            {/* Weather Insight */}
-            <GlassCard className="md:col-span-full flex flex-col justify-between cursor-pointer hover:shadow-lg transition-shadow" >
-              <div onClick={() => router.push('/weather')}>
-                <h3 className="text-base font-medium opacity-70 mb-3 flex items-center gap-2">
-                  <CloudSun size={18} /> Weather
-                </h3>
-                {weatherData ? (
-                  <div>
-                    <div className="flex items-baseline gap-2 mb-2">
-                      <span className="text-4xl font-bold text-slate-800">{Math.round(weatherData.current.temperature)}°</span>
-                      <span className="text-sm opacity-70">{getWeatherDescription(weatherData.current.weatherCode)}</span>
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                      <div className="bg-gradient-to-r from-blue-400 to-blue-600 h-full rounded-full" style={{ width: '60%' }}></div>
-                    </div>
-                    <div className="flex justify-between mt-2 text-xs opacity-60">
-                      <span>Humidity: {weatherData.current.humidity}%</span>
-                      <span>Wind: {weatherData.current.windSpeed}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="animate-pulse">
-                    <div className="h-8 w-20 bg-slate-200 rounded mb-2"></div>
-                    <div className="h-2 w-full bg-slate-200 rounded"></div>
-                  </div>
-                )}
-              </div>
-            </GlassCard>
+                <Section title="Plan something">
+                    <Carousel>
+                        {PLANNERS.map((d) => (
+                            <Link
+                                key={d.href}
+                                href={d.href}
+                                className="press w-[152px] rounded-2xl border border-line bg-surface p-4 shadow-e1"
+                            >
+                                <span
+                                    className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${d.bg} ${d.fg}`}
+                                >
+                                    <d.icon size={19} />
+                                </span>
+                                <span className="block text-sm font-bold text-foreground">
+                                    {d.label}
+                                </span>
+                                <span className="mt-0.5 block text-xs leading-snug text-muted">
+                                    {d.hint}
+                                </span>
+                            </Link>
+                        ))}
+                    </Carousel>
+                </Section>
 
-            {/* Date Planner Insight */}
-            <GlassCard className="md:col-span-1 flex flex-col justify-between cursor-pointer hover:shadow-lg transition-shadow">
-              <div onClick={() => router.push('/date-planner')}>
-                <h3 className="text-base font-medium opacity-70 mb-3 flex items-center gap-2">
-                  <Heart size={18} /> Date Planner
-                </h3>
-                <div className="flex items-end gap-2">
-                  <div className="text-3xl font-bold text-slate-800">Journey</div>
-                  <div className="flex-1 h-10 bg-pink-50 rounded-md relative overflow-hidden">
-                    <div className="absolute inset-0 flex items-center justify-center text-xs text-pink-500 font-medium">
-                      Plan Now
-                    </div>
-                  </div>
+                {/* Persistent safety affordance — one tap from the home screen. */}
+                <div className="page-x mt-7">
+                    <Link
+                        href="/emergency"
+                        className="press flex items-center gap-3 rounded-2xl border border-cat-emergency/25 bg-cat-emergency-soft p-4"
+                    >
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cat-emergency text-white">
+                            <AlertTriangle size={19} />
+                        </span>
+                        <span className="min-w-0">
+                            <span className="block text-sm font-bold text-foreground">
+                                Emergency helplines
+                            </span>
+                            <span className="block truncate text-xs text-muted">
+                                Police, ambulance, fire and hospitals in Kochi
+                            </span>
+                        </span>
+                        <ChevronRight
+                            size={18}
+                            className="ml-auto shrink-0 text-cat-emergency"
+                        />
+                    </Link>
                 </div>
-              </div>
-            </GlassCard>
+            </div>
+        </HomePageWrapper>
+    );
+}
 
-            {/* Local Events Insight */}
-            <GlassCard className="md:col-span-1 flex flex-col justify-between cursor-pointer hover:shadow-lg transition-shadow">
-              <div onClick={() => router.push('/local-events')}>
-                <h3 className="text-base font-medium opacity-70 mb-3 flex items-center gap-2">
-                  <Calendar size={18} /> Local Events
-                </h3>
-                <div className="flex items-end gap-2">
-                  <div className="text-3xl font-bold text-slate-800">Upcoming</div>
-                  <div className="flex-1 h-10 bg-slate-100 rounded-md relative overflow-hidden">
-                    <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400">
-                      Click to explore
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </GlassCard>
+function DestinationTile({
+    destination,
+    index,
+}: {
+    destination: Destination;
+    index: number;
+}) {
+    const { href, label, hint, icon: Icon, fg, bg } = destination;
+    return (
+        <Link
+            href={href}
+            style={{ '--dk-i': index } as React.CSSProperties}
+            className="press flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-e1 hover:border-line-strong hover:shadow-e2"
+        >
+            <span
+                className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${bg} ${fg}`}
+            >
+                <Icon size={19} />
+            </span>
+            <span className="text-[15px] font-bold leading-tight text-foreground">
+                {label}
+            </span>
+            <span className="mt-0.5 text-xs leading-snug text-muted">
+                {hint}
+            </span>
+        </Link>
+    );
+}
 
-            {/* User/Profile Insight */}
-            <GlassCard className="md:col-span-1 flex flex-col justify-between">
-              <div>
-                <h3 className="text-base font-medium opacity-70 mb-3 flex items-center gap-2">
-                  <Zap size={18} /> Status
-                </h3>
-                <div className="w-full h-4 bg-slate-200 rounded-xl overflow-hidden mb-2">
-                  <div className="h-full w-[84%] bg-gradient-to-r from-green-500 via-yellow-400 to-orange-500 rounded-xl"></div>
-                </div>
-                <div className="text-sm font-medium text-slate-600">
-                  {user ? `Welcome, ${user.email?.split('@')[0]}` : 'Guest User'}
-                </div>
-              </div>
-              {user ? (
+function WeatherHero({
+    weather,
+    failed,
+    onRetry,
+}: {
+    weather: WeatherData | null;
+    failed: boolean;
+    onRetry: () => void;
+}) {
+    if (failed && !weather) {
+        return (
+            <div className="rounded-2xl border border-line bg-surface p-4 shadow-e1">
+                <p className="text-sm font-semibold text-foreground">
+                    Weather unavailable
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                    Could not reach the forecast service.
+                </p>
                 <button
-                  onClick={() => router.push('/settings')}
-                  className="flex items-center justify-center gap-2 text-xs text-blue-600 font-bold mt-3 hover:bg-blue-50 px-3 py-2 rounded-lg transition-colors"
+                    type="button"
+                    onClick={onRetry}
+                    className="press mt-3 h-9 rounded-lg bg-surface-2 px-3 text-[13px] font-semibold text-foreground"
                 >
-                  <Settings size={14} />
-                  Settings
+                    Try again
                 </button>
-              ) : (
-                <button onClick={() => router.push('/profile')} className="text-xs text-blue-600 font-bold mt-2 hover:underline">
-                  Sign In →
-                </button>
-              )}
-            </GlassCard>
+            </div>
+        );
+    }
 
+    if (!weather) {
+        return (
+            <div className="rounded-2xl border border-line bg-surface p-4 shadow-e1">
+                <LoadingAnnouncer label="Loading current weather" />
+                <div className="flex items-center gap-4">
+                    <Skeleton className="h-14 w-14 rounded-2xl" />
+                    <div className="flex-1 space-y-2">
+                        <Skeleton className="h-7 w-24" />
+                        <Skeleton className="h-3 w-32" />
+                    </div>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                    <Skeleton className="h-12 rounded-xl" />
+                    <Skeleton className="h-12 rounded-xl" />
+                    <Skeleton className="h-12 rounded-xl" />
+                </div>
+            </div>
+        );
+    }
 
+    const { current, daily } = weather;
+    const Icon = getWeatherIcon(current.weatherCode, current.isDay);
+    const aqi = getAqiBand(current.aqi);
+    const high = daily?.temperatureMax?.[0];
+    const low = daily?.temperatureMin?.[0];
 
+    return (
+        <Link
+            href="/weather"
+            className="press dk-fade-up block rounded-2xl border border-line bg-surface p-4 shadow-e1 hover:border-line-strong hover:shadow-e2"
+        >
+            <div className="flex items-center gap-4">
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-cat-weather-soft text-cat-weather">
+                    <Icon size={28} />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-[34px] font-extrabold leading-none tracking-tight text-foreground">
+                            {Math.round(current.temperature)}°
+                        </span>
+                        {Number.isFinite(high) && Number.isFinite(low) && (
+                            <span className="text-[13px] font-semibold text-muted">
+                                H {Math.round(high)}° L {Math.round(low)}°
+                            </span>
+                        )}
+                    </div>
+                    <p className="mt-1 truncate text-[13px] font-medium text-muted">
+                        {getWeatherDescription(current.weatherCode)} · Fort Kochi
+                    </p>
+                </div>
+                <ChevronRight size={18} className="shrink-0 text-faint" />
+            </div>
 
+            {/* Three real readings, replacing the hardcoded 60%-wide bar that
+                previously stood in for data. */}
+            <div className="mt-4 grid grid-cols-3 gap-2">
+                <Metric
+                    icon={Droplets}
+                    label="Humidity"
+                    value={`${current.humidity}%`}
+                />
+                <Metric
+                    icon={Wind}
+                    label="Wind"
+                    value={`${Math.round(current.windSpeed)} km/h`}
+                />
+                <Metric icon={Gauge} label="Air" value={aqi.label} />
+            </div>
+        </Link>
+    );
+}
 
-          </div>
-        </main>
-      </div>
-    </HomePageWrapper>
-  );
+function Metric({
+    icon: Icon,
+    label,
+    value,
+}: {
+    icon: LucideIcon;
+    label: string;
+    value: string;
+}) {
+    return (
+        <div className="rounded-xl bg-surface-2 px-2.5 py-2">
+            <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-faint">
+                <Icon size={12} />
+                {label}
+            </span>
+            <span className="mt-0.5 block truncate text-sm font-bold text-foreground">
+                {value}
+            </span>
+        </div>
+    );
 }

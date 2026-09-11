@@ -1,69 +1,83 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import ImageUpload from '@/components/ImageUpload';
-import { Save, AlertTriangle, Monitor, Layout, Type, Palette } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { Save, Type, Palette, Wrench } from 'lucide-react';
+
+import { Button } from '@/components/ui/Button';
+import { Notice } from '@/components/ui/Notice';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { Field, TextInput, TextArea } from '@/components/ui/Field';
+
+type Settings = {
+    maintenance_mode: boolean;
+    maintenance_title: string;
+    maintenance_message: string;
+    maintenance_image_url: string;
+    bg_color: string;
+    text_color: string;
+};
+
+const DEFAULTS: Settings = {
+    maintenance_mode: false,
+    maintenance_title: '',
+    maintenance_message: '',
+    maintenance_image_url: '',
+    bg_color: '#ffffff',
+    text_color: '#000000',
+};
 
 export default function MaintenanceSettingsPage() {
     const { user } = useAuth();
-    const router = useRouter();
+    const [settings, setSettings] = useState<Settings>(DEFAULTS);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [feedback, setFeedback] = useState<
+        { tone: 'success' | 'error'; text: string } | null
+    >(null);
 
-    // Settings State
-    const [settings, setSettings] = useState({
-        maintenance_mode: false,
-        maintenance_title: '',
-        maintenance_message: '',
-        maintenance_image_url: '',
-        bg_color: '#ffffff',
-        text_color: '#000000',
-    });
-
-    useEffect(() => {
-        fetchSettings();
-    }, []);
-
-    const fetchSettings = async () => {
+    const fetchSettings = useCallback(async () => {
         try {
-            // Check if settings row exists, insert if not (fallback safety)
             const { data, error } = await supabase
                 .from('site_settings')
                 .select('*')
-                .single();
+                .eq('id', 1)
+                .maybeSingle();
 
-            if (error) {
-                if (error.code === 'PGRST116') {
-                    // Row not found, try to insert
-                    const { data: newData, error: insertError } = await supabase
-                        .from('site_settings')
-                        .insert([{ id: 1, maintenance_mode: false }])
-                        .select()
-                        .single();
+            if (error) throw error;
 
-                    if (!insertError && newData) {
-                        setSettings(newData);
-                    }
-                } else {
-                    console.error('Error fetching settings:', error);
+            if (data) {
+                setSettings({ ...DEFAULTS, ...data });
+            } else {
+                const { data: created, error: insertError } = await supabase
+                    .from('site_settings')
+                    .insert([{ id: 1, maintenance_mode: false }])
+                    .select()
+                    .single();
+                if (!insertError && created) {
+                    setSettings({ ...DEFAULTS, ...created });
                 }
-            } else if (data) {
-                setSettings(data);
             }
         } catch (err) {
-            console.error('Unexpected error:', err);
+            console.error('Error fetching settings:', err);
+            setFeedback({ tone: 'error', text: 'Could not load settings.' });
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        fetchSettings();
+    }, [fetchSettings]);
+
+    const set = <K extends keyof Settings>(key: K, value: Settings[K]) =>
+        setSettings((prev) => ({ ...prev, [key]: value }));
 
     const handleSave = async () => {
-        if (!user) return;
         setSaving(true);
-
+        setFeedback(null);
         try {
             const { error } = await supabase
                 .from('site_settings')
@@ -75,192 +89,220 @@ export default function MaintenanceSettingsPage() {
                     bg_color: settings.bg_color,
                     text_color: settings.text_color,
                     updated_at: new Date().toISOString(),
-                    updated_by: user.uid
+                    // Admins sign in with the static cookie, not Firebase, so
+                    // there is usually no uid to record. The old code began
+                    // with `if (!user) return`, which meant Save silently did
+                    // nothing for every cookie-authenticated admin.
+                    updated_by: user?.uid ?? null,
                 })
-                .eq('id', 1); // Singleton row assumption
+                .eq('id', 1);
 
             if (error) throw error;
-            alert('Settings saved successfully!');
-        } catch (error) {
-            console.error('Error saving settings:', error);
-            alert('Failed to save settings.');
+            setFeedback({ tone: 'success', text: 'Settings saved.' });
+        } catch (err) {
+            console.error('Error saving settings:', err);
+            setFeedback({ tone: 'error', text: 'Could not save settings.' });
         } finally {
             setSaving(false);
         }
     };
 
-    if (loading) return <div className="p-8">Loading settings...</div>;
+    if (loading) {
+        return (
+            <div className="space-y-3">
+                <Skeleton className="h-9 w-56" />
+                <Skeleton className="h-28 rounded-2xl" />
+                <Skeleton className="h-64 rounded-2xl" />
+            </div>
+        );
+    }
 
     return (
-        <div className="max-w-4xl mx-auto py-8 px-4">
-            <div className="flex justify-between items-center mb-8">
+        <div className="mx-auto max-w-4xl space-y-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600">
-                        Site Maintenance
+                    <h1 className="text-[24px] font-extrabold tracking-tight text-foreground">
+                        Maintenance
                     </h1>
-                    <p className="text-slate-500 mt-1">Control site access and customize the maintenance page.</p>
+                    <p className="mt-0.5 text-sm text-muted">
+                        Control public access and the holding page.
+                    </p>
                 </div>
-                <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-purple-200 active:scale-95 disabled:opacity-50"
-                >
-                    {saving ? <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" /> : <Save size={20} />}
-                    Save Changes
-                </button>
+                <Button onClick={handleSave} loading={saving}>
+                    <Save size={16} />
+                    Save changes
+                </Button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* SETTINGS COLUMN */}
-                <div className="space-y-6">
-                    {/* Status Card */}
-                    <div className={`p-6 rounded-2xl border-2 transition-all ${settings.maintenance_mode ? 'bg-red-50 border-red-200 shadow-sm' : 'bg-green-50 border-green-200 shadow-sm'}`}>
-                        <div className="flex justify-between items-center">
-                            <div>
-                                <h3 className={`font-bold text-lg ${settings.maintenance_mode ? 'text-red-700' : 'text-green-700'}`}>
-                                    {settings.maintenance_mode ? 'Maintenance Mode ACTIVE' : 'Site is LIVE'}
-                                </h3>
-                                <p className={`text-sm mt-1 ${settings.maintenance_mode ? 'text-red-600/80' : 'text-green-600/80'}`}>
-                                    {settings.maintenance_mode ? 'Public access is disabled. Only admins can view the site.' : 'The site is accessible to everyone.'}
-                                </p>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={settings.maintenance_mode}
-                                    onChange={e => setSettings({ ...settings, maintenance_mode: e.target.checked })}
+            {feedback && (
+                <Notice tone={feedback.tone}>{feedback.text}</Notice>
+            )}
+
+            <div
+                className={`rounded-2xl border p-5 ${settings.maintenance_mode
+                        ? 'border-danger/30 bg-danger-soft/40'
+                        : 'border-success/30 bg-success-soft/40'
+                    }`}
+            >
+                <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                        <h2 className="text-[15px] font-bold text-foreground">
+                            {settings.maintenance_mode
+                                ? 'Maintenance mode is on'
+                                : 'Site is live'}
+                        </h2>
+                        <p className="mt-0.5 text-sm text-muted">
+                            {settings.maintenance_mode
+                                ? 'Visitors are redirected to the holding page.'
+                                : 'Everyone can browse the site normally.'}
+                        </p>
+                    </div>
+
+                    <label className="relative inline-flex shrink-0 cursor-pointer items-center">
+                        <input
+                            type="checkbox"
+                            className="peer sr-only"
+                            checked={settings.maintenance_mode}
+                            onChange={(e) =>
+                                set('maintenance_mode', e.target.checked)
+                            }
+                            aria-label="Maintenance mode"
+                        />
+                        <span className="h-7 w-[52px] rounded-full bg-line-strong transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-6 after:w-6 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-danger peer-checked:after:translate-x-[24px] peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2" />
+                    </label>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                <div className="space-y-5">
+                    <section className="space-y-4 rounded-2xl border border-line bg-surface p-5 shadow-e1">
+                        <h2 className="flex items-center gap-2 text-[15px] font-bold text-foreground">
+                            <Type size={17} className="text-muted" />
+                            Page content
+                        </h2>
+
+                        <Field label="Title">
+                            {(id) => (
+                                <TextInput
+                                    id={id}
+                                    value={settings.maintenance_title ?? ''}
+                                    onChange={(e) =>
+                                        set('maintenance_title', e.target.value)
+                                    }
+                                    placeholder="Site under maintenance"
                                 />
-                                <div className="w-14 h-7 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-red-500"></div>
-                            </label>
-                        </div>
-                    </div>
+                            )}
+                        </Field>
 
-                    {/* Content Section */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <Type className="text-slate-400" size={20} />
-                            <h3 className="font-bold text-slate-700">Page Content</h3>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
-                            <input
-                                type="text"
-                                value={settings.maintenance_title || ''}
-                                onChange={e => setSettings({ ...settings, maintenance_title: e.target.value })}
-                                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all"
-                                placeholder="e.g., Under Maintenance"
-                            />
-                        </div>
+                        <Field label="Message">
+                            {(id) => (
+                                <TextArea
+                                    id={id}
+                                    rows={4}
+                                    value={settings.maintenance_message ?? ''}
+                                    onChange={(e) =>
+                                        set(
+                                            'maintenance_message',
+                                            e.target.value,
+                                        )
+                                    }
+                                    placeholder="Explain what's happening and when you'll be back."
+                                />
+                            )}
+                        </Field>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Message</label>
-                            <textarea
-                                value={settings.maintenance_message || ''}
-                                onChange={e => setSettings({ ...settings, maintenance_message: e.target.value })}
-                                className="w-full h-32 px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all resize-none"
-                                placeholder="Explain why the site is down..."
+                            <span className="mb-1.5 block text-[13px] font-semibold text-foreground">
+                                Image
+                            </span>
+                            <ImageUpload
+                                value={settings.maintenance_image_url ?? ''}
+                                onChange={(url) =>
+                                    set('maintenance_image_url', url)
+                                }
                             />
                         </div>
-                    </div>
+                    </section>
 
-                    {/* Styling Section */}
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <Palette className="text-slate-400" size={20} />
-                            <h3 className="font-bold text-slate-700">Appearance</h3>
-                        </div>
+                    <section className="space-y-4 rounded-2xl border border-line bg-surface p-5 shadow-e1">
+                        <h2 className="flex items-center gap-2 text-[15px] font-bold text-foreground">
+                            <Palette size={17} className="text-muted" />
+                            Appearance
+                        </h2>
 
                         <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Background Color</label>
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="color"
-                                        value={settings.bg_color || '#ffffff'}
-                                        onChange={e => setSettings({ ...settings, bg_color: e.target.value })}
-                                        className="h-10 w-10 p-1 rounded cursor-pointer border border-slate-200"
-                                    />
-                                    <span className="text-sm font-mono text-slate-500 uppercase">{settings.bg_color}</span>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Text Color</label>
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="color"
-                                        value={settings.text_color || '#000000'}
-                                        onChange={e => setSettings({ ...settings, text_color: e.target.value })}
-                                        className="h-10 w-10 p-1 rounded cursor-pointer border border-slate-200"
-                                    />
-                                    <span className="text-sm font-mono text-slate-500 uppercase">{settings.text_color}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Maintenance Image</label>
-                            <ImageUpload
-                                value={settings.maintenance_image_url || ''}
-                                onChange={url => setSettings({ ...settings, maintenance_image_url: url })}
-                                className="w-full"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                {/* PREVIEW COLUMN */}
-                <div className="relative">
-                    <div className="sticky top-8">
-                        <div className="flex items-center gap-2 mb-4">
-                            <Monitor className="text-slate-400" size={20} />
-                            <h3 className="font-bold text-slate-700">Live Preview</h3>
-                        </div>
-
-                        <div className="border-[8px] border-slate-900 rounded-[2rem] overflow-hidden shadow-2xl bg-white aspect-[9/16] md:aspect-[3/4] relative transform scale-95 origin-top">
-                            {/* Device Top Bar */}
-                            <div className="absolute top-0 w-full h-6 bg-slate-900 z-10 flex justify-center">
-                                <div className="w-1/3 h-4 bg-black rounded-b-xl"></div>
-                            </div>
-
-                            {/* Actual Preview Content */}
-                            <div
-                                className="w-full h-full flex flex-col items-center justify-center p-8 text-center"
-                                style={{ backgroundColor: settings.bg_color || '#ffffff' }}
-                            >
-                                {settings.maintenance_image_url && (
-                                    <div className="mb-8 relative w-48 h-48">
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img
-                                            src={settings.maintenance_image_url}
-                                            alt="Maintenance"
-                                            className="w-full h-full object-contain"
+                            {(
+                                [
+                                    ['bg_color', 'Background'],
+                                    ['text_color', 'Text'],
+                                ] as const
+                            ).map(([key, label]) => (
+                                <div key={key}>
+                                    <span className="mb-1.5 block text-[13px] font-semibold text-foreground">
+                                        {label}
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="color"
+                                            value={settings[key] || '#ffffff'}
+                                            onChange={(e) =>
+                                                set(key, e.target.value)
+                                            }
+                                            aria-label={`${label} colour`}
+                                            className="h-11 w-14 shrink-0 cursor-pointer rounded-lg border border-line bg-transparent p-1"
+                                        />
+                                        <TextInput
+                                            value={settings[key] ?? ''}
+                                            onChange={(e) =>
+                                                set(key, e.target.value)
+                                            }
+                                            aria-label={`${label} colour hex`}
+                                            className="font-mono text-sm"
                                         />
                                     </div>
-                                )}
-
-                                <h1
-                                    className="text-2xl font-bold mb-4"
-                                    style={{ color: settings.text_color || '#000000' }}
-                                >
-                                    {settings.maintenance_title || 'Site Under Maintenance'}
-                                </h1>
-
-                                <p
-                                    className="text-sm opacity-80 leading-relaxed max-w-sm"
-                                    style={{ color: settings.text_color || '#000000' }}
-                                >
-                                    {settings.maintenance_message || 'We are currently performing scheduled maintenance.'}
-                                </p>
-                            </div>
+                                </div>
+                            ))}
                         </div>
-
-                        <div className="text-center mt-4 text-xs text-slate-400">
-                            Preview of what users will see
-                        </div>
-                    </div>
+                    </section>
                 </div>
+
+                {/* Live preview of what a visitor would see */}
+                <section>
+                    <h2 className="mb-2.5 text-[13px] font-bold uppercase tracking-wide text-faint">
+                        Preview
+                    </h2>
+                    <div
+                        className="flex min-h-[380px] flex-col items-center justify-center rounded-2xl border border-line px-6 py-10 text-center"
+                        style={{
+                            backgroundColor: settings.bg_color || '#ffffff',
+                            color: settings.text_color || '#000000',
+                        }}
+                    >
+                        {settings.maintenance_image_url ? (
+                            // Admin-supplied URL from any host.
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={settings.maintenance_image_url}
+                                alt=""
+                                className="mb-6 h-32 w-32 object-contain"
+                            />
+                        ) : (
+                            <span
+                                className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl"
+                                style={{ background: 'rgba(127,127,127,0.15)' }}
+                            >
+                                <Wrench size={26} />
+                            </span>
+                        )}
+                        <p className="text-2xl font-extrabold leading-tight">
+                            {settings.maintenance_title || 'Site under maintenance'}
+                        </p>
+                        <p className="mt-3 max-w-xs text-sm leading-relaxed opacity-80">
+                            {settings.maintenance_message ||
+                                'We are carrying out some scheduled work. Dear Kochi will be back shortly.'}
+                        </p>
+                    </div>
+                </section>
             </div>
         </div>
     );
