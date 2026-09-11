@@ -3,13 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-    MapPin,
     Bus,
     AlertTriangle,
-    Users,
-    Tag,
+    CloudSun,
     Store,
-    CalendarDays,
     Heart,
     Backpack,
     Search,
@@ -17,11 +14,20 @@ import {
     Wind,
     Gauge,
     ChevronRight,
+    MapPin,
+    CalendarDays,
+    Tag,
+    Plus,
+    Star,
+    Clock,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
+import { supabase } from '@/lib/supabase';
 import { Section, Carousel } from '@/components/ui/Section';
 import { Skeleton, LoadingAnnouncer } from '@/components/ui/Skeleton';
+import { SafeImage } from '@/components/ui/SafeImage';
+import { Badge } from '@/components/ui/Chip';
 import { useAuth } from '@/lib/auth-context';
 import {
     getWeatherDescription,
@@ -29,103 +35,105 @@ import {
     getAqiBand,
     WeatherData,
 } from '@/lib/weather';
+import {
+    formatPrice,
+    formatRelative,
+    formatEventDate,
+    formatTime,
+} from '@/lib/format';
 import HomePageWrapper from '@/components/HomePageWrapper';
+import { DynamicIcon } from '@/components/ui/DynamicIcon';
 
-type Destination = {
+/*
+ * Shortcuts deliberately exclude everything already in the bottom tab bar
+ * (Home, Explore, Events, Market, Me), and are hidden from md up where
+ * DesktopNav handles navigation. The previous dashboard rendered the whole
+ * nav again as a grid of tiles, so desktop listed the same seven
+ * destinations twice.
+ */
+const SHORTCUTS: {
     href: string;
     label: string;
-    hint: string;
     icon: LucideIcon;
-    /** Token pair from globals.css, keeping tile colour theme-aware. */
     fg: string;
     bg: string;
+}[] = [
+        {
+            href: '/transport',
+            label: 'Transport',
+            icon: Bus,
+            fg: 'text-cat-transport',
+            bg: 'bg-cat-transport-soft',
+        },
+        {
+            href: '/weather',
+            label: 'Weather',
+            icon: CloudSun,
+            fg: 'text-cat-weather',
+            bg: 'bg-cat-weather-soft',
+        },
+        {
+            href: '/stores',
+            label: 'Stores',
+            icon: Store,
+            fg: 'text-cat-stores',
+            bg: 'bg-cat-stores-soft',
+        },
+        {
+            href: '/date-planner',
+            label: 'Date plan',
+            icon: Heart,
+            fg: 'text-cat-events',
+            bg: 'bg-cat-events-soft',
+        },
+        {
+            href: '/packing',
+            label: 'Packing',
+            icon: Backpack,
+            fg: 'text-cat-classified',
+            bg: 'bg-cat-classified-soft',
+        },
+        {
+            href: '/search',
+            label: 'Search',
+            icon: Search,
+            fg: 'text-primary',
+            bg: 'bg-primary-soft',
+        },
+        {
+            href: '/emergency',
+            label: 'Emergency',
+            icon: AlertTriangle,
+            fg: 'text-cat-emergency',
+            bg: 'bg-cat-emergency-soft',
+        },
+    ];
+
+type PlaceRow = {
+    id: string;
+    name: string;
+    type: string | null;
+    description: string | null;
+    image_url: string | null;
+    rating: number | null;
 };
 
-const DESTINATIONS: Destination[] = [
-    {
-        href: '/places',
-        label: 'Must Visit',
-        hint: 'Forts, beaches, cafés',
-        icon: MapPin,
-        fg: 'text-cat-places',
-        bg: 'bg-cat-places-soft',
-    },
-    {
-        href: '/local-events',
-        label: 'Events',
-        hint: "What's on this week",
-        icon: CalendarDays,
-        fg: 'text-cat-events',
-        bg: 'bg-cat-events-soft',
-    },
-    {
-        href: '/classified',
-        label: 'Classifieds',
-        hint: 'Buy, sell, rent',
-        icon: Tag,
-        fg: 'text-cat-classified',
-        bg: 'bg-cat-classified-soft',
-    },
-    {
-        href: '/stores',
-        label: 'Stores',
-        hint: 'Local businesses',
-        icon: Store,
-        fg: 'text-cat-stores',
-        bg: 'bg-cat-stores-soft',
-    },
-    {
-        href: '/transport',
-        label: 'Transport',
-        hint: 'Metro, bus, ferry',
-        icon: Bus,
-        fg: 'text-cat-transport',
-        bg: 'bg-cat-transport-soft',
-    },
-    {
-        href: '/emergency',
-        label: 'Emergency',
-        hint: 'Helplines nearby',
-        icon: AlertTriangle,
-        fg: 'text-cat-emergency',
-        bg: 'bg-cat-emergency-soft',
-    },
-];
+type EventRow = {
+    id: string;
+    title: string;
+    location: string | null;
+    start_time: string;
+    event_type: 'scheduled' | 'live';
+};
 
-const PLANNERS: Destination[] = [
-    {
-        href: '/date-planner',
-        label: 'Date Planner',
-        hint: 'Build an evening out',
-        icon: Heart,
-        fg: 'text-cat-events',
-        bg: 'bg-cat-events-soft',
-    },
-    {
-        href: '/packing',
-        label: 'Packing List',
-        hint: 'Before you travel',
-        icon: Backpack,
-        fg: 'text-cat-classified',
-        bg: 'bg-cat-classified-soft',
-    },
-    {
-        href: '/social',
-        label: 'Social',
-        hint: 'Meet locals',
-        icon: Users,
-        fg: 'text-cat-social',
-        bg: 'bg-cat-social-soft',
-    },
-    {
-        href: '/search',
-        label: 'Search',
-        hint: 'Find anything',
-        icon: Search,
-        fg: 'text-cat-weather',
-        bg: 'bg-cat-weather-soft',
-    },
-];
+type AdRow = {
+    id: number;
+    title: string;
+    price: number | null;
+    price_unit: string | null;
+    image_url: string | null;
+    created_at: string;
+};
 
 function greeting(date: Date) {
     const h = date.getHours();
@@ -138,22 +146,27 @@ function greeting(date: Date) {
 
 export default function DearKochi() {
     const { user } = useAuth();
+
     const [weather, setWeather] = useState<WeatherData | null>(null);
     const [weatherFailed, setWeatherFailed] = useState(false);
-    // Set only after mount: the greeting depends on the visitor's clock,
-    // which the server cannot know without a hydration mismatch.
-    const [now, setNow] = useState<Date | null>(null);
+    const [places, setPlaces] = useState<PlaceRow[]>([]);
+    const [events, setEvents] = useState<EventRow[]>([]);
+    const [ads, setAds] = useState<AdRow[]>([]);
+    const [contentLoading, setContentLoading] = useState(true);
 
+    // Depends on the visitor's clock, so it is set after mount to avoid a
+    // hydration mismatch.
+    const [now, setNow] = useState<Date | null>(null);
     useEffect(() => setNow(new Date()), []);
 
     const loadWeather = useCallback(async () => {
         try {
             const res = await fetch('/api/weather');
-            if (!res.ok) throw new Error(`Weather request failed: ${res.status}`);
+            if (!res.ok) throw new Error(String(res.status));
             setWeather(await res.json());
             setWeatherFailed(false);
         } catch (err) {
-            console.error(err);
+            console.error('Weather unavailable:', err);
             setWeatherFailed(true);
         }
     }, []);
@@ -164,14 +177,61 @@ export default function DearKochi() {
         return () => clearInterval(id);
     }, [loadWeather]);
 
+    /*
+     * One pass for everything the dashboard shows. Sections that come back
+     * empty are not rendered at all, so the page never displays a shelf of
+     * placeholder boxes pretending to be content.
+     */
+    useEffect(() => {
+        let cancelled = false;
+
+        (async () => {
+            const nowIso = new Date().toISOString();
+            const [placesRes, eventsRes, adsRes] = await Promise.allSettled([
+                supabase
+                    .from('user_places')
+                    .select('id, name, type, description, image_url, rating')
+                    .eq('is_known', true)
+                    .limit(8),
+                supabase
+                    .from('local_events')
+                    .select('id, title, location, start_time, event_type')
+                    .gt('end_time', nowIso)
+                    .order('start_time', { ascending: true })
+                    .limit(6),
+                supabase
+                    .from('classified_ads')
+                    .select('id, title, price, price_unit, image_url, created_at')
+                    .eq('status', 'active')
+                    .order('created_at', { ascending: false })
+                    .limit(6),
+            ]);
+
+            if (cancelled) return;
+
+            if (placesRes.status === 'fulfilled' && placesRes.value.data) {
+                setPlaces(placesRes.value.data as PlaceRow[]);
+            }
+            if (eventsRes.status === 'fulfilled' && eventsRes.value.data) {
+                setEvents(eventsRes.value.data as EventRow[]);
+            }
+            if (adsRes.status === 'fulfilled' && adsRes.value.data) {
+                setAds(adsRes.value.data as AdRow[]);
+            }
+            setContentLoading(false);
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     const firstName =
         user?.displayName?.split(' ')[0] ?? user?.email?.split('@')[0] ?? null;
 
     return (
         <HomePageWrapper>
-            {/* Visible page heading. The previous build marked its only h1
-                sr-only, leaving the screen with no title at all. */}
-            <div className="page-x mx-auto w-full max-w-6xl pt-5 pb-1">
+            <div className="page-x mx-auto w-full max-w-6xl pt-5">
                 <p className="min-h-[18px] text-[13px] font-semibold text-muted">
                     {now ? greeting(now) : ''}
                     {now && firstName ? `, ${firstName}` : ''}
@@ -179,10 +239,6 @@ export default function DearKochi() {
                 <h1 className="mt-0.5 text-[26px] font-extrabold leading-tight tracking-tight text-foreground">
                     Dear Kochi
                 </h1>
-                <p className="mt-1 text-sm leading-relaxed text-muted">
-                    Your guide to Cochin — places, events, transport and the
-                    city&rsquo;s daily rhythm.
-                </p>
             </div>
 
             <div className="mx-auto w-full max-w-6xl pb-8">
@@ -194,43 +250,198 @@ export default function DearKochi() {
                     />
                 </div>
 
-                <Section title="Explore Kochi" className="mt-7">
-                    <div className="page-x dk-stagger grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {DESTINATIONS.map((d, i) => (
-                            <DestinationTile
-                                key={d.href}
-                                destination={d}
-                                index={i}
-                            />
-                        ))}
-                    </div>
-                </Section>
-
-                <Section title="Plan something">
-                    <Carousel>
-                        {PLANNERS.map((d) => (
+                {/* Compact and mobile-only; desktop navigates from the nav bar. */}
+                <div className="mt-5 md:hidden">
+                    <Carousel className="gap-2">
+                        {SHORTCUTS.map((s) => (
                             <Link
-                                key={d.href}
-                                href={d.href}
-                                className="press w-[152px] rounded-2xl border border-line bg-surface p-4 shadow-e1"
+                                key={s.href}
+                                href={s.href}
+                                className="press flex w-[76px] flex-col items-center gap-1.5 rounded-2xl border border-line bg-surface p-2.5 shadow-e1"
                             >
                                 <span
-                                    className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${d.bg} ${d.fg}`}
+                                    className={`flex h-9 w-9 items-center justify-center rounded-xl ${s.bg} ${s.fg}`}
                                 >
-                                    <d.icon size={19} />
+                                    <s.icon size={17} />
                                 </span>
-                                <span className="block text-sm font-bold text-foreground">
-                                    {d.label}
-                                </span>
-                                <span className="mt-0.5 block text-xs leading-snug text-muted">
-                                    {d.hint}
+                                <span className="text-center text-[11px] font-semibold leading-tight text-foreground">
+                                    {s.label}
                                 </span>
                             </Link>
                         ))}
                     </Carousel>
-                </Section>
+                </div>
 
-                {/* Persistent safety affordance — one tap from the home screen. */}
+                {contentLoading ? (
+                    <div className="page-x mt-7">
+                        <LoadingAnnouncer label="Loading the latest from Kochi" />
+                        <Skeleton className="mb-3 h-5 w-40" />
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            {Array.from({ length: 4 }).map((_, i) => (
+                                <Skeleton key={i} className="h-44 rounded-2xl" />
+                            ))}
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        {events.length > 0 && (
+                            <Section title="Happening soon" href="/local-events">
+                                <Carousel>
+                                    {events.map((e) => (
+                                        <Link
+                                            key={e.id}
+                                            href="/local-events"
+                                            className="press w-[240px] rounded-2xl border border-line bg-surface p-4 shadow-e1"
+                                        >
+                                            <span className="flex items-center gap-2">
+                                                <span
+                                                    className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${e.event_type === 'live'
+                                                            ? 'bg-cat-emergency-soft text-cat-emergency'
+                                                            : 'bg-cat-social-soft text-cat-social'
+                                                        }`}
+                                                >
+                                                    {e.event_type}
+                                                </span>
+                                                <span className="text-[11px] font-semibold text-muted">
+                                                    {formatEventDate(e.start_time)} ·{' '}
+                                                    {formatTime(e.start_time)}
+                                                </span>
+                                            </span>
+                                            <span className="mt-2 line-clamp-2 block text-[15px] font-bold leading-snug text-foreground">
+                                                {e.title}
+                                            </span>
+                                            {e.location && (
+                                                <span className="mt-1.5 flex items-center gap-1 text-xs text-muted">
+                                                    <MapPin
+                                                        size={12}
+                                                        className="shrink-0 text-faint"
+                                                    />
+                                                    <span className="truncate">
+                                                        {e.location}
+                                                    </span>
+                                                </span>
+                                            )}
+                                        </Link>
+                                    ))}
+                                </Carousel>
+                            </Section>
+                        )}
+
+                        {places.length > 0 && (
+                            <Section title="Worth visiting" href="/places">
+                                <Carousel>
+                                    {places.map((p) => (
+                                        <Link
+                                            key={p.id}
+                                            href="/places"
+                                            className="press w-[190px] overflow-hidden rounded-2xl border border-line bg-surface shadow-e1"
+                                        >
+                                            <span className="relative block h-28 bg-surface-2">
+                                                <SafeImage
+                                                    src={p.image_url}
+                                                    alt={p.name}
+                                                    sizes="190px"
+                                                />
+                                                {p.type && (
+                                                    <Badge className="absolute left-2 top-2 bg-surface/95 text-foreground shadow-e1 backdrop-blur-sm">
+                                                        {p.type}
+                                                    </Badge>
+                                                )}
+                                            </span>
+                                            <span className="block p-3">
+                                                <span className="flex items-start justify-between gap-1.5">
+                                                    <span className="line-clamp-1 text-sm font-bold text-foreground">
+                                                        {p.name}
+                                                    </span>
+                                                    {p.rating != null && (
+                                                        <span className="flex shrink-0 items-center gap-0.5 text-xs font-bold text-foreground">
+                                                            <Star
+                                                                size={11}
+                                                                className="fill-accent text-accent"
+                                                            />
+                                                            {p.rating.toFixed(1)}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                                {p.description && (
+                                                    <span className="mt-1 line-clamp-2 block text-xs leading-snug text-muted">
+                                                        {p.description}
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </Link>
+                                    ))}
+                                </Carousel>
+                            </Section>
+                        )}
+
+                        {ads.length > 0 && (
+                            <Section title="Just listed" href="/classified">
+                                <Carousel>
+                                    {ads.map((a) => (
+                                        <Link
+                                            key={a.id}
+                                            href={`/classified/${a.id}`}
+                                            className="press w-[160px] overflow-hidden rounded-2xl border border-line bg-surface shadow-e1"
+                                        >
+                                            <span className="relative block aspect-square bg-surface-2">
+                                                <SafeImage
+                                                    src={a.image_url}
+                                                    alt={a.title}
+                                                    sizes="160px"
+                                                />
+                                            </span>
+                                            <span className="block p-3">
+                                                <span className="line-clamp-1 text-sm font-bold text-foreground">
+                                                    {a.title}
+                                                </span>
+                                                <span className="mt-0.5 block text-[15px] font-extrabold text-foreground">
+                                                    {formatPrice(a.price, a.price_unit) ??
+                                                        'Contact'}
+                                                </span>
+                                                <span className="mt-0.5 block text-[11px] text-faint">
+                                                    {formatRelative(a.created_at)}
+                                                </span>
+                                            </span>
+                                        </Link>
+                                    ))}
+                                </Carousel>
+                            </Section>
+                        )}
+
+                        {/* When a shelf has nothing to show, invite the action
+                            rather than rendering an empty row. */}
+                        {(events.length === 0 || ads.length === 0) && (
+                            <Section title="Add to the city">
+                                <div className="page-x grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    {events.length === 0 && (
+                                        <ContributeCard
+                                            href="/local-events"
+                                            icon={CalendarDays}
+                                            title="No events this week"
+                                            body="Organise a walk, a meetup or a game and put it on the map."
+                                            cta="Create an event"
+                                            fg="text-cat-events"
+                                            bg="bg-cat-events-soft"
+                                        />
+                                    )}
+                                    {ads.length === 0 && (
+                                        <ContributeCard
+                                            href="/classified/new"
+                                            icon={Tag}
+                                            title="Nothing listed yet"
+                                            body="Sell something, rent a room, or offer a service locally."
+                                            cta="Post an ad"
+                                            fg="text-cat-classified"
+                                            bg="bg-cat-classified-soft"
+                                        />
+                                    )}
+                                </div>
+                            </Section>
+                        )}
+                    </>
+                )}
+
                 <div className="page-x mt-7">
                     <Link
                         href="/emergency"
@@ -258,30 +469,46 @@ export default function DearKochi() {
     );
 }
 
-function DestinationTile({
-    destination,
-    index,
+function ContributeCard({
+    href,
+    icon: Icon,
+    title,
+    body,
+    cta,
+    fg,
+    bg,
 }: {
-    destination: Destination;
-    index: number;
+    href: string;
+    icon: LucideIcon;
+    title: string;
+    body: string;
+    cta: string;
+    fg: string;
+    bg: string;
 }) {
-    const { href, label, hint, icon: Icon, fg, bg } = destination;
     return (
         <Link
             href={href}
-            style={{ '--dk-i': index } as React.CSSProperties}
-            className="press flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-e1 hover:border-line-strong hover:shadow-e2"
+            className="press flex items-start gap-3 rounded-2xl border border-dashed border-line bg-surface/60 p-4"
         >
             <span
-                className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${bg} ${fg}`}
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${bg} ${fg}`}
             >
                 <Icon size={19} />
             </span>
-            <span className="text-[15px] font-bold leading-tight text-foreground">
-                {label}
-            </span>
-            <span className="mt-0.5 text-xs leading-snug text-muted">
-                {hint}
+            <span className="min-w-0">
+                <span className="block text-[15px] font-bold text-foreground">
+                    {title}
+                </span>
+                <span className="mt-0.5 block text-xs leading-relaxed text-muted">
+                    {body}
+                </span>
+                <span
+                    className={`mt-2 inline-flex items-center gap-1 text-[13px] font-bold ${fg}`}
+                >
+                    <Plus size={13} />
+                    {cta}
+                </span>
             </span>
         </Link>
     );
@@ -337,10 +564,10 @@ function WeatherHero({
     }
 
     const { current, daily } = weather;
-    const Icon = getWeatherIcon(current.weatherCode, current.isDay);
     const aqi = getAqiBand(current.aqi);
     const high = daily?.temperatureMax?.[0];
     const low = daily?.temperatureMin?.[0];
+    const sunset = daily?.sunset?.[0];
 
     return (
         <Link
@@ -349,7 +576,7 @@ function WeatherHero({
         >
             <div className="flex items-center gap-4">
                 <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-cat-weather-soft text-cat-weather">
-                    <Icon size={28} />
+                    <DynamicIcon icon={getWeatherIcon(current.weatherCode, current.isDay)} size={28} />
                 </span>
                 <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
@@ -369,8 +596,6 @@ function WeatherHero({
                 <ChevronRight size={18} className="shrink-0 text-faint" />
             </div>
 
-            {/* Three real readings, replacing the hardcoded 60%-wide bar that
-                previously stood in for data. */}
             <div className="mt-4 grid grid-cols-3 gap-2">
                 <Metric
                     icon={Droplets}
@@ -382,7 +607,11 @@ function WeatherHero({
                     label="Wind"
                     value={`${Math.round(current.windSpeed)} km/h`}
                 />
-                <Metric icon={Gauge} label="Air" value={aqi.label} />
+                {sunset ? (
+                    <Metric icon={Clock} label="Sunset" value={formatTime(sunset)} />
+                ) : (
+                    <Metric icon={Gauge} label="Air" value={aqi.label} />
+                )}
             </div>
         </Link>
     );

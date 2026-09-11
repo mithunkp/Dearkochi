@@ -30,6 +30,7 @@ import { Chip, ChipRow, Badge } from '@/components/ui/Chip';
 import { EmptyState, ErrorState } from '@/components/ui/EmptyState';
 import { Skeleton, LoadingAnnouncer } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
+import { DynamicIcon } from '@/components/ui/DynamicIcon';
 
 interface Attraction {
     id: string;
@@ -337,7 +338,6 @@ function PlaceCard({
     onOpen: () => void;
     onShare: () => void;
 }) {
-    const Icon = iconForType(place.type);
 
     return (
         <li
@@ -353,7 +353,7 @@ function PlaceCard({
                     />
                 ) : (
                     <span className="flex h-full w-full items-center justify-center text-faint">
-                        <Icon size={34} strokeWidth={1.5} />
+                        <DynamicIcon icon={iconForType(place.type)} size={34} strokeWidth={1.5} />
                     </span>
                 )}
                 <Badge className="absolute left-2.5 top-2.5 bg-surface/95 text-foreground shadow-e1 backdrop-blur-sm">

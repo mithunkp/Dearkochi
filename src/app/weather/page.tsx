@@ -2,6 +2,7 @@ import { getWeather, getWeatherDescription, getWeatherIcon } from '@/lib/weather
 import { Clock, CalendarDays } from 'lucide-react';
 import { ErrorState } from '@/components/ui/EmptyState';
 import CurrentWeatherCard from './CurrentWeatherCard';
+import { DynamicIcon } from '@/components/ui/DynamicIcon';
 
 export { metadata } from './metadata';
 
@@ -44,12 +45,6 @@ export default async function WeatherPage() {
                 <ul className="mt-3 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface shadow-e1">
                     {hourly.time.slice(0, 8).map((t, i) => {
                         const date = new Date(t);
-                        const Icon = getWeatherIcon(
-                            hourly.weatherCode[i],
-                            // Daylight roughly 6am–6:30pm in Kochi; the hourly
-                            // feed has no is_day flag of its own.
-                            date.getHours() >= 6 && date.getHours() < 18,
-                        );
                         return (
                             <li
                                 key={t}
@@ -64,7 +59,14 @@ export default async function WeatherPage() {
                                             hour12: true,
                                         })}
                                 </span>
-                                <Icon
+                                <DynamicIcon
+                                    icon={getWeatherIcon(
+                                        hourly.weatherCode[i],
+                                        // Daylight is roughly 6am-6:30pm in
+                                        // Kochi; the hourly feed carries no
+                                        // is_day flag of its own.
+                                        date.getHours() >= 6 && date.getHours() < 18,
+                                    )}
                                     size={19}
                                     className="shrink-0 text-cat-weather"
                                 />
@@ -90,7 +92,6 @@ export default async function WeatherPage() {
                 <ul className="mt-3 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface shadow-e1">
                     {daily.time.map((t, i) => {
                         const date = new Date(t);
-                        const Icon = getWeatherIcon(daily.weatherCode[i], true);
                         const max = Math.round(daily.temperatureMax[i]);
                         const min = Math.round(daily.temperatureMin[i]);
 
@@ -114,7 +115,8 @@ export default async function WeatherPage() {
                                             weekday: 'short',
                                         })}
                                 </span>
-                                <Icon
+                                <DynamicIcon
+                                    icon={getWeatherIcon(daily.weatherCode[i], true)}
                                     size={19}
                                     className="shrink-0 text-cat-weather"
                                 />

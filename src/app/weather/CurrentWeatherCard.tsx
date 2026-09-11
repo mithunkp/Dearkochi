@@ -10,6 +10,7 @@ import {
 } from '@/lib/weather';
 import { Chip, ChipRow } from '@/components/ui/Chip';
 import { formatTime } from '@/lib/format';
+import { DynamicIcon } from '@/components/ui/DynamicIcon';
 
 interface CurrentWeatherCardProps {
     weather: WeatherData;
@@ -94,7 +95,6 @@ export default function CurrentWeatherCard({ weather }: CurrentWeatherCardProps)
         return { scaleMin: lo, scaleRange: hi - lo || 1 };
     }, [series]);
 
-    const Icon = getWeatherIcon(current.weatherCode, current.isDay);
     const aqi = getAqiBand(current.aqi);
     const cfg = METRICS[metric];
 
@@ -103,7 +103,7 @@ export default function CurrentWeatherCard({ weather }: CurrentWeatherCardProps)
             <div className="rounded-2xl border border-line bg-surface p-5 shadow-e1">
                 <div className="flex items-center gap-4">
                     <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-cat-weather-soft text-cat-weather">
-                        <Icon size={32} />
+                        <DynamicIcon icon={getWeatherIcon(current.weatherCode, current.isDay)} size={32} />
                     </span>
                     <div className="min-w-0 flex-1">
                         <p className="flex items-baseline gap-2">
